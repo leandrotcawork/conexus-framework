@@ -53,13 +53,13 @@ class UsageTracker:
                 ).fetchall()
             return [dict(r) for r in rows]
 
-    def total_usd(
+    def _rows(
         self,
         *,
         agent_name: str | None = None,
         since: datetime | None = None,
-    ) -> float:
-        where: list[str] = []
+    ) -> list[dict]:
+        where: list[str] = ["error IS NULL"]
         params: list = []
         if agent_name:
             where.append("agent_name=?")
@@ -67,12 +67,20 @@ class UsageTracker:
         if since:
             where.append("ts >= ?")
             params.append(since.isoformat())
-        sql = "SELECT COALESCE(SUM(cost_usd), 0.0) AS total FROM llm_usage"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
+        sql = "SELECT provider, model, input_tokens, output_tokens, context FROM llm_usage WHERE " + " AND ".join(where)
         with self.store.connect() as conn:
-            row = conn.execute(sql, params).fetchone()
-            return float(row["total"])
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    def total_usd(
+        self,
+        *,
+        agent_name: str | None = None,
+        since: datetime | None = None,
+    ) -> float:
+        return sum(
+            compute_cost(f"{r['provider']}/{r['model']}", r["input_tokens"], r["output_tokens"])
+            for r in self._rows(agent_name=agent_name, since=since)
+        )
 
     def by_context(
         self,
@@ -80,18 +88,8 @@ class UsageTracker:
         agent_name: str | None = None,
         since: datetime | None = None,
     ) -> dict[str, float]:
-        where: list[str] = []
-        params: list = []
-        if agent_name:
-            where.append("agent_name=?")
-            params.append(agent_name)
-        if since:
-            where.append("ts >= ?")
-            params.append(since.isoformat())
-        sql = "SELECT context, COALESCE(SUM(cost_usd), 0.0) AS total FROM llm_usage"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " GROUP BY context"
-        with self.store.connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
-            return {r["context"]: float(r["total"]) for r in rows}
+        totals: dict[str, float] = {}
+        for r in self._rows(agent_name=agent_name, since=since):
+            cost = compute_cost(f"{r['provider']}/{r['model']}", r["input_tokens"], r["output_tokens"])
+            totals[r["context"]] = totals.get(r["context"], 0.0) + cost
+        return totals
