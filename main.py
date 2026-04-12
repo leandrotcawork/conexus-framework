@@ -33,10 +33,6 @@ from core.messaging.telegram_bot import TelegramBot
 from core.scheduler.scheduler import ConexusScheduler, JobSpec
 
 
-DATA_DIR = Path(os.environ.get("CONEXUS_DATA_DIR", "/data"))
-DB_PATH = DATA_DIR / "conexus.db"
-WIKI_DIR = DATA_DIR / "wiki"
-
 _BRT = ZoneInfo("America/Sao_Paulo")
 
 # Tool schemas in OpenAI function-calling format.
@@ -188,11 +184,11 @@ _ANA_TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "wiki_read",
-            "description": "Lê um arquivo da wiki de memória.",
+            "description": "Lê um arquivo da wiki. O path é relativo à raiz da wiki, ex: 'index.md' ou 'preferences/leandro.md'. NUNCA inclua 'agents/ana/wiki/' no path.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {"type": "string", "description": "Caminho relativo, ex: 'preferences/leandro.md'"},
                 },
                 "required": ["path"],
             },
@@ -202,7 +198,7 @@ _ANA_TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "wiki_list",
-            "description": "Lista arquivos da wiki.",
+            "description": "Lista arquivos da wiki. Use folder='' para listar a raiz. NUNCA inclua 'agents/ana/wiki/' no folder.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -229,11 +225,11 @@ _ANA_TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "wiki_write",
-            "description": "Escreve ou atualiza um arquivo na wiki.",
+            "description": "Escreve ou atualiza um arquivo na wiki. O path é relativo à raiz da wiki, ex: 'preferences/leandro.md'. NUNCA inclua 'agents/ana/wiki/' no path.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path":    {"type": "string"},
+                    "path":    {"type": "string", "description": "Caminho relativo, ex: 'preferences/leandro.md'"},
                     "content": {"type": "string"},
                 },
                 "required": ["path", "content"],
@@ -246,10 +242,14 @@ _ANA_TOOLS_SCHEMA = [
 async def amain() -> None:
     load_dotenv()
 
+    data_dir = Path(os.environ.get("CONEXUS_DATA_DIR", "/data"))
+    db_path = data_dir / "conexus.db"
+    wiki_dir = data_dir / "wiki"
+
     # --- Storage ---
-    store = SqliteStore(DB_PATH)
+    store = SqliteStore(db_path)
     store.init_db()
-    wiki = WikiStore(WIKI_DIR, autocommit=True)
+    wiki = WikiStore(wiki_dir, autocommit=True)
 
     # --- LLM stack ---
     tracker = UsageTracker(store)
