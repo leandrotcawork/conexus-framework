@@ -25,12 +25,13 @@ base = pathlib.Path("/data/wiki")
 )
 
 (base / "about" / "conexus.md").write_text(
-    "# Conexus\n\n"
-    "Framework pessoal de agentes do Leandro. "
-    "Ana é a primeira agente (secretária). "
-    "Próximos: Researcher (pesquisa/notícias) e Code Manager (análise de código).\n\n"
+    "# Conexus (também escrito Co-Nexus)\n\n"
+    "Framework pessoal de agentes do Leandro Theodoro. "
+    "Ana é a primeira agente (secretária executiva). "
+    "Próximos agentes planejados: Researcher (pesquisa e notícias) e Code Manager (análise de código).\n\n"
     "Todos os agentes compartilham a mesma infraestrutura: "
-    "LLM router, memória SQLite, bot Telegram, scheduler APScheduler.\n"
+    "LLM router (LiteLLM), memória SQLite, bot Telegram, scheduler APScheduler.\n\n"
+    "Repositório: privado. Deploy: Fly.io, região gru (São Paulo).\n"
 )
 
 print("Wiki seed OK")
