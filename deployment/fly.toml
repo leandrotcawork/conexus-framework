@@ -1,0 +1,21 @@
+app = "conexus"
+primary_region = "gru"
+
+[build]
+  dockerfile = "deployment/Dockerfile"
+
+[env]
+  TZ = "America/Sao_Paulo"
+  PYTHONUNBUFFERED = "1"
+  CONEXUS_DATA_DIR = "/data"
+
+[[mounts]]
+  source = "conexus_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[deploy]
+  strategy = "immediate"
