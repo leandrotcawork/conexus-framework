@@ -219,7 +219,7 @@ pesq: fontes                          # list current trusted sources
 ### Research Tools
 | Tool | Signature | Purpose |
 |------|-----------|---------|
-| `web_search` | `(query: str, sources_tier: int) → list[dict]` | Search the web, respecting source tiers |
+| `web_search` | `(query: str, sources_tier: int) → list[dict]` | Search the web via DuckDuckGo (duckduckgo-search), respecting source tiers. Free, no API key. Fallback: swap to Brave Search free tier if rate-limited |
 | `web_fetch` | `(url: str) → str` | Fetch and extract article content from URL |
 | `youtube_transcript` | `(url: str) → str` | Extract YouTube video transcript |
 | `pdf_extract` | `(file_path: str) → str` | Extract text from PDF file |
@@ -360,7 +360,7 @@ budget:
 |--------|---------|
 | `GITHUB_WIKI_DEPLOY_KEY` | SSH key for pushing to knowledge-wiki repo |
 | `DEEPSEEK_API_KEY` | DeepSeek API key for R1 synthesis calls |
-| `SERPER_API_KEY` | Serper.dev API key — Google Search API, 2500 free queries/month, $0 to start |
+| *(none for search)* | Web search uses `duckduckgo-search` Python package — free, no API key needed |
 
 ---
 
