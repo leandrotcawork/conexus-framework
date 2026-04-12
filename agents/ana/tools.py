@@ -68,3 +68,26 @@ class AnaTools:
     def todos_mark_done(self, id: int) -> dict:
         self.store.todo_mark_done(id)
         return {"ok": True}
+
+    # ----- wiki -----
+
+    def wiki_read(self, path: str) -> str:
+        return self.wiki.read(path)
+
+    def wiki_list(self, folder: str = "") -> list[str]:
+        return self.wiki.list(folder)
+
+    def wiki_search(self, query: str) -> list[dict]:
+        return self.wiki.search(query)
+
+    def wiki_write(self, path: str, content: str) -> dict:
+        self.wiki.write(path, content)
+        return {"ok": True}
+
+    def wiki_append_log(self, kind: str, title: str, body: str) -> dict:
+        self.wiki.append_log(kind, title, body)
+        return {"ok": True}
+
+    def wiki_update_index(self, path: str, summary: str) -> dict:
+        self.wiki.update_index(path, summary)
+        return {"ok": True}
