@@ -1,0 +1,82 @@
+# flyctl launch added from .gitignore
+# Claude Code local settings
+**\.claude
+
+# Python
+**\__pycache__
+**\*.py[cod]
+**\*$py.class
+**\*.so
+**\.Python
+**\.venv
+**\venv
+**\env
+**\ENV
+**\*.egg-info
+**\dist
+**\build
+
+# Environment
+**\.env
+**\.env.local
+**\.env.*.local
+
+# OS
+**\.DS_Store
+**\Thumbs.db
+
+# IDE
+**\.vscode
+**\.idea
+**\*.swp
+**\*.swo
+
+# Project data (will not be committed even locally)
+**\data
+**\*.db
+**\*.sqlite
+**\*.sqlite3
+
+# Secrets / keys
+**\*.pem
+**\*_deploy_key
+**\wiki_deploy_key*
+
+# flyctl launch added from .pytest_cache\.gitignore
+# Created by pytest automatically.
+.pytest_cache\**\*
+
+# flyctl launch added from .venv\.gitignore
+.venv\**\*
+
+# flyctl launch added from .venv\Lib\site-packages\chromadb\proto\.gitignore
+.venv\Lib\site-packages\chromadb\proto\**\*_pb2.py*
+.venv\Lib\site-packages\chromadb\proto\**\*_pb2_grpc.py
+
+# flyctl launch added from .venv\Lib\site-packages\crewai\cli\templates\crew\.gitignore
+.venv\Lib\site-packages\crewai\cli\templates\crew\**\.env
+.venv\Lib\site-packages\crewai\cli\templates\crew\**\__pycache__
+.venv\Lib\site-packages\crewai\cli\templates\crew\**\.DS_Store
+
+# flyctl launch added from .venv\Lib\site-packages\crewai\cli\templates\flow\.gitignore
+.venv\Lib\site-packages\crewai\cli\templates\flow\**\.env
+.venv\Lib\site-packages\crewai\cli\templates\flow\**\__pycache__
+.venv\Lib\site-packages\crewai\cli\templates\flow\**\lib
+.venv\Lib\site-packages\crewai\cli\templates\flow\**\.DS_Store
+
+# flyctl launch added from .venv\Lib\site-packages\crewai\cli\templates\tool\.gitignore
+# Python-generated files
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\__pycache__
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\*.py[oc]
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\build
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\dist
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\wheels
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\*.egg-info
+
+# Virtual environments
+.venv\Lib\site-packages\crewai\cli\templates\tool\**\.venv
+
+# flyctl launch added from .venv\Lib\site-packages\litellm\proxy\.gitignore
+.venv\Lib\site-packages\litellm\proxy\**\.env
+.venv\Lib\site-packages\litellm\proxy\**\secrets.toml
+fly.toml
