@@ -24,11 +24,8 @@ tools:
   - wiki_update_index
 llm:
   provider: gemini
-  model: gemini-2.0-flash
+  model: gemini-2.5-flash
   temperature: 0.4
-  fallback:
-    - { provider: openai, model: gpt-4o-mini }
-    - { provider: anthropic, model: claude-haiku-4-5 }
 schedules:
   - { kind: briefing,   cron: "0 7 * * *" }
   - { kind: recap,      cron: "0 21 * * *" }
