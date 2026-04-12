@@ -165,7 +165,8 @@ def make_todo_sweep_job(
 
         tools.store.ping_mark_pending("todo_sweep", ref_id, "ana")
         try:
-            msg = "📋 Todos atrasados:\n" + "\n".join(f"- {t['text']}" for t in overdue)
+            lines = [f"- {t['text']} (era: {t['due']})" for t in overdue]
+            msg = "⚠️ Atenção, pendências vencidas:\n" + "\n".join(lines)
             await send_telegram(msg)
             tools.store.ping_mark_sent("todo_sweep", ref_id, "ana")
         except Exception as ex:
@@ -177,35 +178,22 @@ def make_todo_sweep_job(
 
 def make_lint_job(
     tools: AnaTools,
-    llm: TrackedLLM,
     send_telegram: Callable[[str], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
-    """Weekly wiki linter. Asks the LLM to suggest improvements to the wiki."""
+    """Weekly wiki lint. v1 stub: just send a "lint stub ran" ack."""
     async def run() -> None:
         now = datetime.now(TZ)
         year, week, _ = now.isocalendar()
         ref_id = f"{year}-{week:02d}"
-
-        async def body() -> str:
-            files = tools.wiki_list()
-            index = tools.wiki_read("index.md") if "index.md" in files else "(vazio)"
-
-            prompt = (
-                "Você é a Ana. Revise o wiki do Leandro e sugira 3-5 melhorias "
-                "concisas em pt-BR. Foque em: informações desatualizadas, seções faltando, "
-                "inconsistências.\n\n"
-                f"Índice do wiki:\n{index}\n\n"
-                f"Arquivos: {', '.join(files[:20])}"
-            )
-
-            with set_context("lint"):
-                return llm.complete([
-                    {"role": "system", "content": "Você é a Ana."},
-                    {"role": "user", "content": prompt},
-                ])
-
-        await _run_with_ping_log(
-            tools.store, "lint", ref_id, "ana", body, send_telegram
-        )
+        if tools.store.ping_was_sent("lint", ref_id, "ana"):
+            return
+        tools.store.ping_mark_pending("lint", ref_id, "ana")
+        try:
+            tools.wiki_append_log("lint", f"Weekly lint {ref_id}", "Stub: no issues analyzed yet.")
+            await send_telegram(f"🧹 Lint semanal {ref_id}: stub rodou (v1 não analisa ainda).")
+            tools.store.ping_mark_sent("lint", ref_id, "ana")
+        except Exception as ex:
+            import sys
+            print(f"[ana:lint] failed: {ex}", file=sys.stderr)
 
     return run
