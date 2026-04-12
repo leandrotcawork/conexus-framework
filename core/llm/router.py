@@ -70,6 +70,7 @@ class TrackedLLM:
                 return choice["message"]["content"] if isinstance(choice, dict) else choice.message.content
 
             except Exception as e:
+                print(f"[llm] {full_model} failed: {e}", flush=True)
                 last_error = e
                 self.tracker.log_call(
                     agent_name=self.agent_name,
