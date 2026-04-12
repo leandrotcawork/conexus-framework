@@ -32,6 +32,7 @@ class TelegramBot:
 
     def build(self) -> Application:
         self.app = Application.builder().token(self.token).build()
+        self.app.add_handler(CommandHandler("uso", self._on_usage))
         self.app.add_handler(CommandHandler("usage", self._on_usage))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message))
         return self.app
