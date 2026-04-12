@@ -1,0 +1,33 @@
+[project]
+name = "conexus"
+version = "0.1.0"
+description = "Personal AI agent framework — Ana the secretary is the first agent"
+requires-python = ">=3.11"
+dependencies = [
+  "crewai>=0.80",
+  "crewai-tools>=0.14",
+  "litellm>=1.50",
+  "python-telegram-bot>=21.0",
+  "apscheduler>=3.10",
+  "google-api-python-client>=2.130",
+  "google-auth>=2.29",
+  "google-auth-oauthlib>=1.2",
+  "tenacity>=8.3",
+  "pydantic>=2.7",
+  "pyyaml>=6.0",
+  "GitPython>=3.1",
+  "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.2",
+  "pytest-asyncio>=0.23",
+  "pytest-mock>=3.14",
+  "freezegun>=1.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
