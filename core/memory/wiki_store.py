@@ -66,13 +66,56 @@ class WikiStore:
     # ----- log & index (implemented in task 2.2) -----
 
     def append_log(self, kind: str, title: str, body: str) -> None:
-        raise NotImplementedError  # task 2.2
+        ts = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+        entry = f"\n## [{ts}] {kind} | {title}\n{body}\n"
+        p = self._resolve("log.md")
+        if not p.exists():
+            p.write_text("# Wiki Log\n\n", encoding="utf-8")
+        with p.open("a", encoding="utf-8") as f:
+            f.write(entry)
+        if self.autocommit:
+            self._git_commit_push(f"wiki-log: {kind} | {title}")
 
     def update_index(self, path: str, summary: str) -> None:
-        raise NotImplementedError  # task 2.2
+        p = self._resolve("index.md")
+        if not p.exists():
+            p.write_text("# Wiki Index\n\n", encoding="utf-8")
+        existing = p.read_text(encoding="utf-8").splitlines()
 
-    # ----- git (implemented in task 2.2) -----
+        # Drop any existing line that references this path
+        label = Path(path).stem
+        keep = [ln for ln in existing if f"({path})" not in ln]
+
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        new_line = f"- [{label}]({path}) — {summary} ({date_str})"
+        keep.append(new_line)
+
+        p.write_text("\n".join(keep) + "\n", encoding="utf-8")
+        if self.autocommit:
+            self._git_commit_push(f"wiki-index: {path}")
+
+    # ----- git -----
 
     def _git_commit_push(self, message: str) -> None:
-        # No-op for now; real implementation in task 2.2
-        pass
+        """Fire-and-forget git add/commit/push. Silent on failure (logged to stderr)."""
+        import subprocess
+        import sys
+
+        try:
+            subprocess.run(
+                ["git", "-C", str(self.root), "add", "-A"],
+                check=True, capture_output=True, text=True, timeout=10,
+            )
+            result = subprocess.run(
+                ["git", "-C", str(self.root), "commit", "-m", message],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0 and "nothing to commit" not in result.stdout:
+                print(f"[wiki] commit failed: {result.stdout} {result.stderr}", file=sys.stderr)
+                return
+            subprocess.run(
+                ["git", "-C", str(self.root), "push", "origin", "main"],
+                check=False, capture_output=True, text=True, timeout=30,
+            )
+        except Exception as e:
+            print(f"[wiki] git sync error: {e}", file=sys.stderr)
