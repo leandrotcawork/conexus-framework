@@ -67,3 +67,18 @@ def test_total_usd_since(tmp_db_path):
     )
     future = datetime.now(timezone.utc) + timedelta(days=1)
     assert tracker.total_usd(agent_name="ana", since=future) == 0.0
+
+
+def test_pricing_reflects_in_total(tmp_db_path):
+    tracker = _make(tmp_db_path)
+    # 1M in + 1M out on Gemini Flash = 0.075 + 0.30 = $0.375
+    tracker.log_call(
+        agent_name="ana",
+        provider="gemini",
+        model="gemini-2.0-flash",
+        input_tokens=1_000_000,
+        output_tokens=1_000_000,
+        context="reactive",
+    )
+    import pytest
+    assert tracker.total_usd(agent_name="ana") == pytest.approx(0.375, rel=1e-6)
