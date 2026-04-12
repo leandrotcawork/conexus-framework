@@ -44,3 +44,27 @@ class AnaTools:
 
     def calendar_delete_event(self, event_id: str) -> dict:
         return self.calendar.delete_event(event_id)
+
+    # ----- memory -----
+
+    def memory_get(self, key: str) -> str | None:
+        return self.store.fact_get(key)
+
+    def memory_set(self, key: str, value: str) -> dict:
+        self.store.fact_set(key, value)
+        return {"ok": True}
+
+    def memory_list_facts(self) -> list[dict]:
+        return self.store.facts_list()
+
+    # ----- todos -----
+
+    def todos_add(self, text: str, due_iso: str | None = None) -> dict:
+        return {"id": self.store.todo_add(text, due_iso)}
+
+    def todos_list(self, status: str = "open") -> list[dict]:
+        return self.store.todos_list(status)
+
+    def todos_mark_done(self, id: int) -> dict:
+        self.store.todo_mark_done(id)
+        return {"ok": True}
