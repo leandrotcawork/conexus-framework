@@ -6,8 +6,11 @@ The handler is plugged in from main.py after agents are loaded.
 
 from __future__ import annotations
 
+import base64
+import os
 from typing import Awaitable, Callable
 
+import litellm
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -34,6 +37,7 @@ class TelegramBot:
         self.app = Application.builder().token(self.token).build()
         self.app.add_handler(CommandHandler("uso", self._on_usage))
         self.app.add_handler(CommandHandler("usage", self._on_usage))
+        self.app.add_handler(MessageHandler(filters.VOICE, self._on_voice))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message))
         return self.app
 
@@ -51,6 +55,35 @@ class TelegramBot:
         prefix_agent, body = _split_prefix(text)
         reply = await self.message_handler(body, prefix_agent)
         await update.message.reply_text(reply)
+
+    async def _on_voice(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        await update.message.reply_text("🎙 Ouvi seu áudio, transcrevendo...")
+        try:
+            tg_file = await update.message.voice.get_file()
+            audio_bytes = bytes(await tg_file.download_as_bytearray())
+            encoded = base64.b64encode(audio_bytes).decode("utf-8")
+
+            model = os.environ.get("GEMINI_MODEL", "gemini/gemini-2.5-flash")
+            resp = litellm.completion(
+                model=model,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Transcreva esta mensagem de voz. Retorne apenas o texto falado, sem comentários."},
+                        {"type": "file", "file": {"file_data": f"data:audio/ogg;base64,{encoded}"}},
+                    ],
+                }],
+            )
+            transcribed = resp.choices[0].message.content.strip()
+        except Exception as e:
+            await update.message.reply_text(f"Não consegui transcrever o áudio: {e}")
+            return
+
+        prefix_agent, body = _split_prefix(transcribed)
+        reply = await self.message_handler(body, prefix_agent)
+        await update.message.reply_text(f'🎙 *"{transcribed}"*\n\n{reply}', parse_mode="Markdown")
 
     async def _on_usage(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._authorized(update):
