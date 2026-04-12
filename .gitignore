@@ -1,0 +1,42 @@
+# Claude Code local settings
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project data (will not be committed even locally)
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets / keys
+*.pem
+*_deploy_key
+wiki_deploy_key*
