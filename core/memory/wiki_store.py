@@ -107,7 +107,12 @@ class WikiStore:
                 check=True, capture_output=True, text=True, timeout=10,
             )
             result = subprocess.run(
-                ["git", "-C", str(self.root), "commit", "-m", message],
+                [
+                    "git", "-C", str(self.root),
+                    "-c", "user.email=isaac@conexus.bot",
+                    "-c", "user.name=Isaac (Conexus)",
+                    "commit", "-m", message,
+                ],
                 capture_output=True, text=True, timeout=10,
             )
             if result.returncode != 0 and "nothing to commit" not in result.stdout:

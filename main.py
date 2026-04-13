@@ -535,12 +535,14 @@ async def amain() -> None:
         async with _llm_sem:
             try:
                 return await _llm_call_single(**kwargs)
-            except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError):
+            except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError) as primary_err:
+                print(f"[llm] primary failed ({type(primary_err).__name__}): {str(primary_err)[:200]}", flush=True)
                 for fb_model in (fallback_models or []):
-                    print(f"[llm] primary failed, trying fallback: {fb_model}", flush=True)
+                    print(f"[llm] trying fallback: {fb_model}", flush=True)
                     try:
                         return await _llm_call_single(**{**kwargs, "model": fb_model})
-                    except Exception:
+                    except Exception as fb_err:
+                        print(f"[llm] fallback {fb_model} also failed: {str(fb_err)[:200]}", flush=True)
                         continue
                 raise  # all fallbacks exhausted
 
