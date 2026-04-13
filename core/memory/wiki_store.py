@@ -118,9 +118,13 @@ class WikiStore:
             if result.returncode != 0 and "nothing to commit" not in result.stdout:
                 print(f"[wiki] commit failed: {result.stdout} {result.stderr}", file=sys.stderr)
                 return
-            subprocess.run(
+            push = subprocess.run(
                 ["git", "-C", str(self.root), "push", "origin", "main"],
-                check=False, capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30,
             )
+            if push.returncode != 0:
+                print(f"[wiki] push failed (rc={push.returncode}): {push.stderr[:300]}", file=sys.stderr)
+            else:
+                print(f"[wiki] pushed OK: {message}", flush=True)
         except Exception as e:
             print(f"[wiki] git sync error: {e}", file=sys.stderr)

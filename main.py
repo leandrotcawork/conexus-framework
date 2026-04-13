@@ -432,18 +432,18 @@ async def amain() -> None:
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
         key_file = ssh_dir / "pesquisador_deploy"
-        if not key_file.exists():
-            key_file.write_text(deploy_key + "\n")
-            key_file.chmod(0o600)
-            # Add GitHub to known_hosts
-            subprocess.run(
-                ["ssh-keyscan", "-t", "ed25519", "github.com"],
-                stdout=open(ssh_dir / "known_hosts", "a"),
-                stderr=subprocess.DEVNULL,
-                timeout=10,
-            )
-            # Configure git to use this key for knowledge-wiki
-            os.environ["GIT_SSH_COMMAND"] = f"ssh -i {key_file} -o StrictHostKeyChecking=accept-new"
+        key_file.write_text(deploy_key + "\n")
+        key_file.chmod(0o600)
+        # Add GitHub to known_hosts
+        subprocess.run(
+            ["ssh-keyscan", "-t", "ed25519", "github.com"],
+            stdout=open(ssh_dir / "known_hosts", "a"),
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        # Always set GIT_SSH_COMMAND so push works after clone/pull
+        os.environ["GIT_SSH_COMMAND"] = f"ssh -i {key_file} -o StrictHostKeyChecking=accept-new"
+        print(f"[wiki] SSH deploy key configured ({key_file})", flush=True)
 
     # --- Knowledge Wiki (Pesquisador) ---
     knowledge_dir = data_dir / "knowledge"
@@ -462,6 +462,21 @@ async def amain() -> None:
                 ["git", "-C", str(knowledge_dir), "pull", "--ff-only"],
                 capture_output=True, text=True, timeout=30,
             )
+        # If deploy key is set, switch remote to SSH so push works
+        # (repo may have been cloned via HTTPS which doesn't support push without PAT)
+        if deploy_key and (knowledge_dir / ".git").exists():
+            import re
+            ssh_url = re.sub(
+                r"https://github\.com/(.+?)(?:\.git)?$",
+                r"git@github.com:\1.git",
+                knowledge_wiki_url,
+            )
+            if ssh_url != knowledge_wiki_url:
+                subprocess.run(
+                    ["git", "-C", str(knowledge_dir), "remote", "set-url", "origin", ssh_url],
+                    capture_output=True, text=True,
+                )
+                print(f"[wiki] remote switched to SSH: {ssh_url}", flush=True)
     knowledge_wiki = WikiStore(knowledge_dir, autocommit=False)  # git_sync tool handles commits
 
     # --- LLM stack ---
