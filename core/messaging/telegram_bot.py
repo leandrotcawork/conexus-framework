@@ -16,8 +16,11 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 
-MessageHandlerFn = Callable[[str, str], Awaitable[str]]
-# signature: handler(chat_text, agent_name) -> reply_text
+ProgressFn = Callable[[str], Awaitable[None]]
+# signature: progress(status_text) -> None (sends intermediate message to chat)
+
+MessageHandlerFn = Callable[[str, str, ProgressFn | None], Awaitable[str]]
+# signature: handler(chat_text, agent_name, progress_fn) -> reply_text
 
 
 class TelegramBot:
@@ -112,8 +115,12 @@ class TelegramBot:
         body = self._strip_mention(text)
         if not body:
             return
+
+        async def _progress(status: str) -> None:
+            await update.message.reply_text(status)
+
         try:
-            reply = await self.message_handler(body, self.agent_name)
+            reply = await self.message_handler(body, self.agent_name, _progress)
         except Exception as e:
             print(f"[{self.agent_name}] error: {e}", flush=True)
             reply = "Desculpa, tive um problema temporario. Tenta de novo em alguns segundos."
@@ -144,7 +151,10 @@ class TelegramBot:
             await update.message.reply_text(f"Nao consegui transcrever o audio: {e}")
             return
 
-        reply = await self.message_handler(transcribed, self.agent_name)
+        async def _progress(status: str) -> None:
+            await update.message.reply_text(status)
+
+        reply = await self.message_handler(transcribed, self.agent_name, _progress)
         await update.message.reply_text(f'🎙 *"{transcribed}"*\n\n{reply}', parse_mode="Markdown")
 
     async def _on_document(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -164,7 +174,11 @@ class TelegramBot:
                 tmp.write(file_bytes)
                 tmp_path = tmp.name
             body = f"resuma este PDF\n[PDF_PATH:{tmp_path}]"
-            reply = await self.message_handler(body, self.agent_name)
+
+            async def _progress(status: str) -> None:
+                await update.message.reply_text(status)
+
+            reply = await self.message_handler(body, self.agent_name, _progress)
             await update.message.reply_text(reply)
         except Exception as e:
             await update.message.reply_text(f"Erro ao processar PDF: {e}")

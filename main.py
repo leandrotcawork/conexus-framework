@@ -561,7 +561,7 @@ async def amain() -> None:
             return json.dumps({"error": str(exc)})
 
     # --- Bot ---
-    async def _handle_ana_message(body: str, _prefix: str) -> str:
+    async def _handle_ana_message(body: str, _prefix: str, progress=None) -> str:
 
         if ana_cap:
             r = cap_checker.check("ana", ana_cap)
@@ -664,7 +664,16 @@ async def amain() -> None:
 
         return "Não consegui completar a tarefa."
 
-    async def _handle_pesquisador_message(body: str, _prefix: str) -> str:
+    # Progress messages for key research milestones
+    _PESQ_PROGRESS = {
+        "web_search": "Pesquisando na web...",
+        "web_fetch": "Lendo artigo...",
+        "raw_save": "Salvando fonte...",
+        "compile_article": "Compilando artigo com Gemini Pro...",
+        "git_sync": "Publicando na wiki...",
+    }
+
+    async def _handle_pesquisador_message(body: str, _prefix: str, progress=None) -> str:
 
         if pesq_cap:
             r = cap_checker.check("pesquisador", pesq_cap)
@@ -709,6 +718,7 @@ async def amain() -> None:
 
         full_model = f"{pesq_llm_cfg.provider}/{pesq_llm_cfg.model}"
         pesq_fallbacks = [f"{f['provider']}/{f['model']}" for f in (pesq_llm_cfg.fallback or [])]
+        _sent_progress: set[str] = set()
 
         with set_context("reactive"):
             for _turn in range(20):
@@ -751,6 +761,10 @@ async def amain() -> None:
                         except json.JSONDecodeError:
                             fn_args = {}
                         print(f"[pesq-tool] {fn_name}({fn_args})", flush=True)
+                        # Send progress to Telegram (each phase only once)
+                        if progress and fn_name in _PESQ_PROGRESS and fn_name not in _sent_progress:
+                            _sent_progress.add(fn_name)
+                            await progress(_PESQ_PROGRESS[fn_name])
                         result = _execute_pesq_tool(fn_name, fn_args)
                         # Truncate oversized tool results to control token growth
                         if len(result) > 25000:
