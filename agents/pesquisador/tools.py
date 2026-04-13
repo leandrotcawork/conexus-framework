@@ -90,11 +90,11 @@ class PesquisadorTools:
         return results[:max_results]
 
     # Max chars to return from web_fetch / youtube_transcript.
-    # ~4000 chars ≈ 1000 tokens — enough content for raw_save without bloating the loop.
-    _MAX_FETCH_CHARS = 4000
+    # ~20K chars ≈ 5K tokens — rich enough for deep articles while keeping loop manageable.
+    _MAX_FETCH_CHARS = 20000
 
     def web_fetch(self, url: str) -> str:
-        """Fetch a web page and extract its text content (truncated to ~4K chars)."""
+        """Fetch a web page and extract its text content (truncated to ~20K chars)."""
         import httpx
         from html.parser import HTMLParser
 
@@ -231,32 +231,37 @@ class PesquisadorTools:
             pass
 
         prompt = (
-            f"Compile the following raw sources into implementation-grade knowledge about '{topic}'.\n\n"
+            f"Compile the following raw sources into a comprehensive technical reference about '{topic}'.\n\n"
             f"Wiki conventions:\n{schema_context}\n\n"
             f"Raw sources:\n{''.join(raw_contents)}\n\n"
             f"Requirements:\n"
             f"1. Start with raw YAML frontmatter (NOT inside a code block): "
             f"domain (infer from target_path '{target_path}'), "
             f"confidence: {confidence}, sources: {total}, last_updated: {today}\n"
-            f"2. Write like a senior engineer documenting knowledge for their team. "
-            f"Dense, practical, zero fluff. Every section answers 'how do I use this?'\n"
-            f"3. Include practical guidance: when to use what, decision criteria, "
+            f"2. BE COMPREHENSIVE. This is a knowledge base, not a summary. Extract ALL useful "
+            f"information from the sources. Cover the topic in depth: how it works internally, "
+            f"what each component does, how they connect, why decisions were made this way.\n"
+            f"3. Include ASCII diagrams showing flows, architecture, and how components interact. "
+            f"Explain related concepts inline (e.g., if OAuth2 uses JWT, explain JWT structure).\n"
+            f"4. Include practical guidance: decision matrices, when to use what, "
             f"common pitfalls and how to avoid them.\n"
-            f"4. Code examples MUST use the preferred tech stack from schema.md. "
-            f"If raw sources have examples in other languages, translate the patterns.\n"
-            f"5. Sections adapt to the topic -- no fixed template. "
-            f"But always cover: core concepts, implementation patterns, security considerations.\n"
-            f"6. End with '## See Also' with [[backlinks]] and '## Sources' listing raw/ paths.\n"
-            f"7. Write in Portuguese (pt-BR).\n"
+            f"5. Code examples use the preferred tech stack from schema.md. Keep them practical "
+            f"but don't make the article code-heavy — knowledge and understanding come first.\n"
+            f"6. Sections adapt to the topic. Cover: core concepts in depth, how it works, "
+            f"related technologies, implementation patterns, security considerations.\n"
+            f"7. End with '## See Also' with [[backlinks]] and '## Sources' listing raw/ paths.\n"
+            f"8. Write in Portuguese (pt-BR).\n"
+            f"9. TARGET LENGTH: 300-500 lines. This is a reference document, not a blog post.\n"
         )
 
         with set_context("synthesis"):
             article = self.llm_synthesis.complete([
                 {"role": "system", "content": (
-                    "You are a senior software engineer writing internal technical documentation. "
-                    "Your reader is a developer who needs to implement this topic. "
-                    "Be direct, practical, and opinionated about best practices. "
-                    "Include code examples in the preferred tech stack. Skip generic introductions."
+                    "You are a senior software engineer building a comprehensive technical knowledge base. "
+                    "Your goal is to write the definitive reference on each topic — the article a senior "
+                    "engineer would bookmark and revisit. Be thorough: explain how things work internally, "
+                    "include diagrams, cover related concepts, and provide practical examples. "
+                    "Knowledge depth matters more than brevity."
                 )},
                 {"role": "user", "content": prompt},
             ])

@@ -753,8 +753,8 @@ async def amain() -> None:
                         print(f"[pesq-tool] {fn_name}({fn_args})", flush=True)
                         result = _execute_pesq_tool(fn_name, fn_args)
                         # Truncate oversized tool results to control token growth
-                        if len(result) > 5000:
-                            result = result[:5000] + "\n[... truncado]"
+                        if len(result) > 25000:
+                            result = result[:25000] + "\n[... truncado]"
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc_id,
