@@ -38,6 +38,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("uso", self._on_usage))
         self.app.add_handler(CommandHandler("usage", self._on_usage))
         self.app.add_handler(MessageHandler(filters.VOICE, self._on_voice))
+        self.app.add_handler(MessageHandler(filters.Document.PDF, self._on_document))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._on_message))
         return self.app
 
@@ -85,6 +86,32 @@ class TelegramBot:
         reply = await self.message_handler(body, prefix_agent)
         await update.message.reply_text(f'🎙 *"{transcribed}"*\n\n{reply}', parse_mode="Markdown")
 
+    async def _on_document(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._authorized(update):
+            return
+        doc = update.message.document
+        if doc.mime_type != "application/pdf":
+            await update.message.reply_text("Só aceito PDFs por enquanto.")
+            return
+        await update.message.reply_text("📄 Recebi o PDF, processando...")
+        try:
+            tg_file = await doc.get_file()
+            file_bytes = bytes(await tg_file.download_as_bytearray())
+            # Save to temp file
+            import tempfile, os
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            # Route to handler with PDF path in the message
+            caption = update.message.caption or ""
+            prefix_agent, body = _split_prefix(caption if caption else "pesq: resuma este PDF")
+            body = f"{body}\n[PDF_PATH:{tmp_path}]"
+            reply = await self.message_handler(body, prefix_agent)
+            await update.message.reply_text(reply)
+            os.unlink(tmp_path)
+        except Exception as e:
+            await update.message.reply_text(f"Erro ao processar PDF: {e}")
+
     async def _on_usage(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._authorized(update):
             return
@@ -100,10 +127,18 @@ class TelegramBot:
 
 
 def _split_prefix(text: str) -> tuple[str, str]:
-    """Parse '/ana olá' -> ('ana', 'olá'). '/researcher foo' -> ('researcher', 'foo'). Plain text -> ('', text)."""
+    """Parse 'pesq: olá' -> ('pesquisador', 'olá'). '/ana olá' -> ('ana', 'olá'). Plain text -> ('', text)."""
+    # Colon-prefix format: "pesq: text" or "pesq:text"
+    _COLON_PREFIXES = {"pesq": "pesquisador"}
+    for short, full in _COLON_PREFIXES.items():
+        if text.lower().startswith(f"{short}:"):
+            body = text[len(short) + 1:].lstrip()
+            return full, body
+
+    # Slash-prefix format: "/ana text"
     if text.startswith("/") and " " in text:
         head, rest = text.split(" ", 1)
         name = head[1:]
-        if name in {"ana", "researcher", "code_manager"}:
+        if name in {"ana", "pesquisador", "researcher", "code_manager"}:
             return name, rest
     return "", text
