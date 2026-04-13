@@ -89,8 +89,12 @@ class PesquisadorTools:
         results.sort(key=lambda x: (not x["is_trusted"],))
         return results[:max_results]
 
+    # Max chars to return from web_fetch / youtube_transcript.
+    # ~4000 chars ≈ 1000 tokens — enough content for raw_save without bloating the loop.
+    _MAX_FETCH_CHARS = 4000
+
     def web_fetch(self, url: str) -> str:
-        """Fetch a web page and extract its text content."""
+        """Fetch a web page and extract its text content (truncated to ~4K chars)."""
         import httpx
         from html.parser import HTMLParser
 
@@ -121,7 +125,10 @@ class PesquisadorTools:
 
         extractor = _TextExtractor()
         extractor.feed(resp.text)
-        return "\n".join(extractor.parts)
+        full_text = "\n".join(extractor.parts)
+        if len(full_text) > self._MAX_FETCH_CHARS:
+            return full_text[:self._MAX_FETCH_CHARS] + f"\n\n[... truncado, {len(full_text)} chars total]"
+        return full_text
 
     def youtube_transcript(self, url: str) -> str:
         """Extract transcript from a YouTube video URL."""
@@ -144,7 +151,10 @@ class PesquisadorTools:
         ytt_api = YouTubeTranscriptApi()
         transcript = ytt_api.fetch(video_id)
         lines = [entry.text for entry in transcript]
-        return "\n".join(lines)
+        full_text = "\n".join(lines)
+        if len(full_text) > self._MAX_FETCH_CHARS:
+            return full_text[:self._MAX_FETCH_CHARS] + f"\n\n[... truncado, {len(full_text)} chars total]"
+        return full_text
 
     def pdf_extract(self, file_path: str) -> str:
         """Extract text from a PDF file."""
