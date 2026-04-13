@@ -67,7 +67,7 @@ class PesquisadorTools:
         tier=1: return ONLY trusted sources (for proactive research).
         tier=2: return all but mark trust status (for user-requested research).
         tier=3: return all (open web, default)."""
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
 
         trusted_domains = self._load_trusted_domains()
         # Fetch more results when filtering to tier 1 to compensate for filtering
@@ -162,14 +162,18 @@ class PesquisadorTools:
 
     # ----- storage tools -----
 
-    def raw_save(self, category: str, filename: str, content: str) -> dict:
-        """Save source material to raw/<category>/<filename>. Immutable â€” rejects overwrites."""
+    def raw_save(self, category: str, filename: str, content: str, source_url: str = "") -> dict:
+        """Save source material to raw/<category>/<filename>. Immutable -- rejects overwrites.
+        source_url is stored so compile_article can determine trust level."""
         path = f"raw/{category}/{filename}"
         try:
             self.wiki.read(path)
             return {"error": f"raw file already exists: {path}. Raw sources are immutable."}
         except FileNotFoundError:
             pass
+        # Prepend source URL as metadata comment if provided
+        if source_url:
+            content = f"<!-- source_url: {source_url} -->\n{content}"
         self.wiki.write(path, content)
         return {"ok": True, "path": path}
 
@@ -190,8 +194,15 @@ class PesquisadorTools:
                 raw_contents.append(f"--- Source: {rp} --- (not found)")
 
         # Determine confidence based on trusted sources
+        # Extract source_url from raw files (embedded by raw_save as HTML comment)
         trusted_domains = self._load_trusted_domains()
-        trusted_count = sum(1 for rp in raw_paths if any(d in rp for d in trusted_domains))
+        trusted_count = 0
+        for rc in raw_contents:
+            match = re.search(r"<!-- source_url: (.+?) -->", rc)
+            if match:
+                url = match.group(1)
+                if self._is_trusted_url(url, trusted_domains):
+                    trusted_count += 1
         total = len(raw_paths)
         if trusted_count >= 3:
             confidence = "high"
@@ -200,7 +211,6 @@ class PesquisadorTools:
         else:
             confidence = "low"
 
-        from datetime import datetime, timezone
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         prompt = (
@@ -210,7 +220,7 @@ class PesquisadorTools:
             f"1. Start with YAML frontmatter: domain (infer from target_path '{target_path}'), "
             f"confidence: {confidence}, sources: {total}, last_updated: {today}\n"
             f"2. Write like Wikipedia: structured, factual, dense. Every sentence earns its place.\n"
-            f"3. Sections should adapt to this specific topic â€” no fixed template.\n"
+            f"3. Sections should adapt to this specific topic -- no fixed template.\n"
             f"4. Include '## See Also' with [[backlinks]] to related topics.\n"
             f"5. Include '## Sources' listing the raw/ paths.\n"
             f"6. Write in Portuguese (pt-BR).\n"
@@ -225,7 +235,7 @@ class PesquisadorTools:
         self.wiki.write(target_path, article)
 
         # Update index.md and log.md atomically
-        self.wiki.update_index(target_path, f"{topic} â€” confidence: {confidence}")
+        self.wiki.update_index(target_path, f"{topic} -- confidence: {confidence}")
         self.wiki.append_log(
             "ingest", topic,
             f"Compiled {len(raw_paths)} sources into {target_path} (confidence: {confidence})"

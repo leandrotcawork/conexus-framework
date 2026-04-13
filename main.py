@@ -367,9 +367,10 @@ _PESQUISADOR_TOOLS_SCHEMA = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "category": {"type": "string", "description": "Categoria: articles, transcripts, ou pdfs"},
-                    "filename": {"type": "string", "description": "Nome do arquivo, ex: 'oauth2-guide.md'"},
-                    "content":  {"type": "string", "description": "Conteúdo do material fonte"},
+                    "category":   {"type": "string", "description": "Categoria: articles, transcripts, ou pdfs"},
+                    "filename":   {"type": "string", "description": "Nome do arquivo, ex: 'oauth2-guide.md'"},
+                    "content":    {"type": "string", "description": "Conteúdo do material fonte"},
+                    "source_url": {"type": "string", "description": "URL original da fonte (para rastrear confiança)"},
                 },
                 "required": ["category", "filename", "content"],
             },
@@ -635,9 +636,21 @@ async def amain() -> None:
         system = (
             f"{pesq_skill.frontmatter.goal}\n\n"
             f"{pesq_skill.body}\n\n"
-            f"Data/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}\n"
-            "Use as ferramentas disponíveis para pesquisar, ler a wiki, "
-            "salvar fontes e compilar artigos. Consulte a wiki antes de pesquisar na web."
+            f"Data/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}\n\n"
+            "## PROTOCOLO OBRIGATÓRIO DE PESQUISA\n\n"
+            "Quando o Leandro pedir para pesquisar um tema, você DEVE executar "
+            "TODAS as etapas abaixo, sem pular nenhuma:\n\n"
+            "1. wiki_search — verifica se já existe artigo na wiki\n"
+            "2. Se não existe: web_search com pelo menos 3 queries diferentes "
+            "(ex: '<tema> overview', '<tema> implementation guide', '<tema> best practices')\n"
+            "3. web_fetch em pelo menos 3 URLs dos resultados (fontes técnicas e completas)\n"
+            "4. raw_save para CADA fonte buscada — sem isso você não tem base para compilar\n"
+            "5. compile_article — usa o LLM de síntese para criar o artigo profissional\n"
+            "6. git_sync — persiste na wiki\n"
+            "7. Responde ao Leandro com resumo do artigo criado\n\n"
+            "NUNCA responda diretamente sem ter salvo fontes e chamado compile_article. "
+            "Um artigo de Wikipedia sozinho não é suficiente — busque documentação oficial, "
+            "RFC, guias técnicos, tutoriais de implementação. Profundidade técnica é obrigatória."
         )
 
         context_lines = "\n".join(f"{m['role']}: {m['content']}" for m in history)
@@ -656,7 +669,7 @@ async def amain() -> None:
         full_model = f"{pesq_llm_cfg.provider}/{pesq_llm_cfg.model}"
 
         with set_context("reactive"):
-            for _turn in range(6):
+            for _turn in range(20):
                 t0 = time.monotonic()
                 resp = litellm.completion(
                     model=full_model,
@@ -727,24 +740,36 @@ async def amain() -> None:
                 lines.append(f"  {ctx_name}: US$ {cost:.4f}")
         return "\n".join(lines)
 
-    token = os.environ["TELEGRAM_BOT_TOKEN"]
-    authorized_chat_id = int(os.environ["AUTHORIZED_CHAT_ID"])
+    ana_token = os.environ["TELEGRAM_BOT_TOKEN"]
+    pesq_token = os.environ["TELEGRAM_PESQ_BOT_TOKEN"]
+    authorized_user_id = int(os.environ["AUTHORIZED_CHAT_ID"])
+    group_chat_ids = [int(x) for x in os.environ.get("TELEGRAM_GROUP_CHAT_ID", "").split(",") if x.strip()]
 
-    async def _route_message(body: str, prefix: str) -> str:
-        if prefix == "pesquisador":
-            return await _handle_pesquisador_message(body, prefix)
-        return await _handle_ana_message(body, prefix)
-
-    bot = TelegramBot(
-        token=token,
-        authorized_chat_id=authorized_chat_id,
-        message_handler=_route_message,
+    ana_bot = TelegramBot(
+        token=ana_token,
+        agent_name="ana",
+        authorized_user_id=authorized_user_id,
+        group_chat_ids=group_chat_ids,
+        message_handler=_handle_ana_message,
         usage_command_handler=_handle_usage_cmd,
     )
-    app = bot.build()
+    ana_app = ana_bot.build()
+
+    pesq_bot = TelegramBot(
+        token=pesq_token,
+        agent_name="pesquisador",
+        authorized_user_id=authorized_user_id,
+        group_chat_ids=group_chat_ids,
+        message_handler=_handle_pesquisador_message,
+        usage_command_handler=_handle_usage_cmd,
+    )
+    pesq_app = pesq_bot.build()
 
     async def send_to_leandro(text: str) -> None:
-        await bot.send_message(text)
+        await ana_bot.send_message(text)
+
+    async def send_pesq_to_leandro(text: str) -> None:
+        await pesq_bot.send_message(text)
 
     # --- Scheduler ---
     scheduler = ConexusScheduler(store, tz="America/Sao_Paulo")
@@ -759,17 +784,26 @@ async def amain() -> None:
     scheduler.add_job(JobSpec("ana", "lint",       "0 22 * * 0",
                               make_lint_job(ana_tools, send_to_leandro)))
     scheduler.add_job(JobSpec("pesquisador", "weekly_digest", "0 20 * * 0",
-                              make_weekly_digest_job(pesq_tools, pesq_llm, store, send_to_leandro)))
+                              make_weekly_digest_job(pesq_tools, pesq_llm, store, send_pesq_to_leandro)))
     scheduler.add_job(JobSpec("pesquisador", "wiki_audit", "0 10 1 * *",
-                              make_wiki_audit_job(pesq_tools, pesq_llm, store, send_to_leandro)))
+                              make_wiki_audit_job(pesq_tools, pesq_llm, store, send_pesq_to_leandro)))
     scheduler.add_job(JobSpec("pesquisador", "proactive_research", "0 14 * * 3,6",
-                              make_proactive_research_job(pesq_tools, pesq_llm, pesq_llm_synthesis, store, send_to_leandro)))
+                              make_proactive_research_job(pesq_tools, pesq_llm, pesq_llm_synthesis, store, send_pesq_to_leandro)))
 
-    # --- Start everything ---
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    print("Ana + Pesquisador online.", flush=True)
+    # --- Start both bots ---
+    await ana_app.initialize()
+    await ana_bot.post_init()
+    await ana_app.bot.delete_webhook(drop_pending_updates=True)
+    await ana_app.start()
+    await ana_app.updater.start_polling(drop_pending_updates=True)
+    print(f"Ana online (@{ana_bot._bot_username}).", flush=True)
+
+    await pesq_app.initialize()
+    await pesq_bot.post_init()
+    await pesq_app.bot.delete_webhook(drop_pending_updates=True)
+    await pesq_app.start()
+    await pesq_app.updater.start_polling(drop_pending_updates=True)
+    print(f"Pesquisador online (@{pesq_bot._bot_username}).", flush=True)
 
     scheduler.start()
     await scheduler.catchup()
@@ -781,9 +815,12 @@ async def amain() -> None:
         pass
     finally:
         scheduler.shutdown()
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+        await ana_app.updater.stop()
+        await ana_app.stop()
+        await ana_app.shutdown()
+        await pesq_app.updater.stop()
+        await pesq_app.stop()
+        await pesq_app.shutdown()
 
 
 if __name__ == "__main__":

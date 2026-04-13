@@ -1,17 +1,15 @@
-from core.messaging.telegram_bot import _split_prefix
+"""Tests for TelegramBot group/private chat logic."""
+
+from core.messaging.telegram_bot import TelegramBot
 
 
-def test_plain_text_no_prefix():
-    assert _split_prefix("olá ana") == ("", "olá ana")
-
-
-def test_ana_prefix():
-    assert _split_prefix("/ana agende uma reunião") == ("ana", "agende uma reunião")
-
-
-def test_researcher_prefix():
-    assert _split_prefix("/researcher últimas de IA") == ("researcher", "últimas de IA")
-
-
-def test_unknown_prefix_is_not_split():
-    assert _split_prefix("/foo hello") == ("", "/foo hello")
+def test_strip_mention():
+    bot = TelegramBot(
+        token="fake",
+        agent_name="pesquisador",
+        authorized_user_id=123,
+    )
+    bot._bot_username = "pesquisador_conexus_bot"
+    assert bot._strip_mention("@pesquisador_conexus_bot pesquise OAuth2") == "pesquise OAuth2"
+    assert bot._strip_mention("pesquise OAuth2") == "pesquise OAuth2"
+    assert bot._strip_mention("ola @pesquisador_conexus_bot como vai") == "ola como vai"

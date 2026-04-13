@@ -13,11 +13,13 @@ PRICING: dict[str, dict[str, float]] = {
     "openai/gpt-4o":                  {"input": 2.50,  "output": 10.00},
     # Google
     "gemini/gemini-2.5-flash":        {"input": 0.15,  "output": 0.60},
+    "gemini/gemini-2.5-pro":          {"input": 1.25,  "output": 10.00},
+    "gemini/gemini-3.1-pro-preview":  {"input": 2.00,  "output": 12.00},
     "gemini/gemini-2.0-flash":        {"input": 0.075, "output": 0.30},
     "gemini/gemini-1.5-pro":          {"input": 1.25,  "output": 5.00},
-    # DeepSeek
-    "deepseek/deepseek-chat":         {"input": 0.27,  "output": 1.10},
-    "deepseek/deepseek-reasoner":     {"input": 0.55,  "output": 2.19},
+    # DeepSeek (V3.2 — both models same pricing, updated 2026-04)
+    "deepseek/deepseek-chat":         {"input": 0.28,  "output": 0.42},
+    "deepseek/deepseek-reasoner":     {"input": 0.28,  "output": 0.42},
     # Groq
     "groq/llama-3.3-70b-versatile":   {"input": 0.59,  "output": 0.79},
 }
