@@ -12,6 +12,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
+import litellm
+import litellm.exceptions
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from agents.ana.jobs import (
     make_briefing_job,
@@ -505,6 +508,16 @@ async def amain() -> None:
         on_exceed=pesq_skill.frontmatter.budget.on_exceed,
     ) if pesq_skill.frontmatter.budget else None
 
+    @retry(
+        retry=retry_if_exception_type(litellm.exceptions.ServiceUnavailableError),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    def _llm_call(**kwargs):
+        """litellm.completion with retry on transient 503/429 errors."""
+        return litellm.completion(**kwargs)
+
     def _execute_tool(name: str, args: dict) -> str:
         """Call an AnaTools method by name and return JSON-serialisable result."""
         fn = getattr(ana_tools, name, None)
@@ -528,7 +541,6 @@ async def amain() -> None:
 
     # --- Bot ---
     async def _handle_ana_message(body: str, _prefix: str) -> str:
-        import litellm
 
         if ana_cap:
             r = cap_checker.check("ana", ana_cap)
@@ -542,9 +554,16 @@ async def amain() -> None:
         system = (
             f"{ana_skill.frontmatter.goal}\n\n"
             f"{ana_skill.body}\n\n"
-            f"Data/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}\n"
-            "Você tem acesso real ao Google Calendar, memória, todos e wiki do Leandro. "
-            "Use as ferramentas disponíveis para agir — não apenas descreva o que faria."
+            f"Data/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}\n\n"
+            "## REGRA CRÍTICA: USE AS FERRAMENTAS\n\n"
+            "Você tem acesso REAL ao Google Calendar, memória, todos e wiki do Leandro.\n"
+            "NUNCA diga que fez algo sem ter chamado a ferramenta correspondente.\n"
+            "- Para criar evento: CHAME calendar_create_event\n"
+            "- Para ver agenda: CHAME calendar_list_events\n"
+            "- Para salvar info: CHAME memory_set ou wiki_write\n"
+            "- Para criar tarefa: CHAME todos_add\n\n"
+            "Se o Leandro pedir para agendar algo, você DEVE chamar calendar_create_event "
+            "com os dados corretos. Nunca responda 'pronto' sem ter executado a ferramenta."
         )
 
         context_lines = "\n".join(f"{m['role']}: {m['content']}" for m in history)
@@ -567,7 +586,7 @@ async def amain() -> None:
         with set_context("reactive"):
             for _turn in range(6):
                 t0 = time.monotonic()
-                resp = litellm.completion(
+                resp = _llm_call(
                     model=full_model,
                     messages=messages,
                     tools=_ANA_TOOLS_SCHEMA,
@@ -623,7 +642,6 @@ async def amain() -> None:
         return "Não consegui completar a tarefa."
 
     async def _handle_pesquisador_message(body: str, _prefix: str) -> str:
-        import litellm
 
         if pesq_cap:
             r = cap_checker.check("pesquisador", pesq_cap)
@@ -671,7 +689,7 @@ async def amain() -> None:
         with set_context("reactive"):
             for _turn in range(20):
                 t0 = time.monotonic()
-                resp = litellm.completion(
+                resp = _llm_call(
                     model=full_model,
                     messages=messages,
                     tools=_PESQUISADOR_TOOLS_SCHEMA,

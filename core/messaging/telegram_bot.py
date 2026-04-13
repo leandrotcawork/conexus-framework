@@ -112,7 +112,11 @@ class TelegramBot:
         body = self._strip_mention(text)
         if not body:
             return
-        reply = await self.message_handler(body, self.agent_name)
+        try:
+            reply = await self.message_handler(body, self.agent_name)
+        except Exception as e:
+            print(f"[{self.agent_name}] error: {e}", flush=True)
+            reply = "Desculpa, tive um problema temporario. Tenta de novo em alguns segundos."
         await update.message.reply_text(reply)
 
     async def _on_voice(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
