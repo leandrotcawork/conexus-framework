@@ -420,6 +420,26 @@ async def amain() -> None:
     store.init_db()
     wiki = WikiStore(wiki_dir, autocommit=True)
 
+    # --- SSH deploy key for knowledge-wiki (Fly.io only) ---
+    deploy_key = os.environ.get("GITHUB_WIKI_DEPLOY_KEY", "")
+    if deploy_key:
+        import subprocess
+        ssh_dir = Path.home() / ".ssh"
+        ssh_dir.mkdir(mode=0o700, exist_ok=True)
+        key_file = ssh_dir / "pesquisador_deploy"
+        if not key_file.exists():
+            key_file.write_text(deploy_key + "\n")
+            key_file.chmod(0o600)
+            # Add GitHub to known_hosts
+            subprocess.run(
+                ["ssh-keyscan", "-t", "ed25519", "github.com"],
+                stdout=open(ssh_dir / "known_hosts", "a"),
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+            )
+            # Configure git to use this key for knowledge-wiki
+            os.environ["GIT_SSH_COMMAND"] = f"ssh -i {key_file} -o StrictHostKeyChecking=accept-new"
+
     # --- Knowledge Wiki (Pesquisador) ---
     knowledge_dir = data_dir / "knowledge"
     knowledge_wiki_url = os.environ.get("KNOWLEDGE_WIKI_REPO", "")
