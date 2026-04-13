@@ -30,22 +30,28 @@ class JobSpec:
 
 CATCHUP_WINDOWS = {
     # kind -> (catchable, end_hour_local)  end_hour == 0 means "end of day"
-    "briefing":   (True,  12),
-    "recap":      (True,  24),
-    "pre_event":  (False, 0),
-    "todo_sweep": (False, 0),
-    "lint":       (True,  0),  # weekly; special-cased
+    # Ana
+    "briefing":            (True,  12),
+    "recap":               (True,  24),
+    "pre_event":           (False, 0),
+    "todo_sweep":          (False, 0),
+    "lint":                (True,  0),
+    # Pesquisador
+    "weekly_digest":       (True,  0),   # weekly, catchable
+    "wiki_audit":          (True,  0),   # monthly, catchable
+    "proactive_research":  (False, 0),   # skip if missed
 }
 
 
 def current_ref_id(kind: str, now_local: datetime) -> str:
-    if kind in ("briefing", "recap", "todo_sweep"):
+    if kind in ("briefing", "recap", "todo_sweep", "proactive_research"):
         return now_local.strftime("%Y-%m-%d")
-    if kind == "lint":
+    if kind in ("lint", "weekly_digest"):
         year, week, _ = now_local.isocalendar()
         return f"{year}-{week:02d}"
+    if kind == "wiki_audit":
+        return now_local.strftime("%Y-%m")
     if kind == "pre_event":
-        # pre_event ref_ids are Google event IDs; not catchable
         return ""
     return ""
 
