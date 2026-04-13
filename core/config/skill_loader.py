@@ -36,9 +36,11 @@ class SkillFrontmatter(BaseModel):
     name: str
     role: str
     language: str = "pt-BR"
+    prefix: str | None = None
     goal: str
     tools: list[str]
     llm: LLMSection
+    llm_synthesis: LLMSection | None = None
     schedules: list[Schedule] = Field(default_factory=list)
     budget: Optional[BudgetSection] = None
 

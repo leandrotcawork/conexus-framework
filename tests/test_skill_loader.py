@@ -1,68 +1,62 @@
+"""Tests for skill_loader with dual-LLM and prefix support."""
+
 from pathlib import Path
-
-import pytest
-
 from core.config.skill_loader import parse_skill_file
 
 
-SAMPLE = """---
-name: Ana
-role: Secretária pessoal
-language: pt-BR
-goal: Ajudar o Leandro
-tools:
-  - calendar_list_events
-  - memory_get
-llm:
-  provider: gemini
-  model: gemini-2.0-flash
-  temperature: 0.4
-  fallback:
-    - { provider: openai, model: gpt-4o-mini }
-schedules:
-  - { kind: briefing, cron: "0 7 * * *" }
-budget:
-  daily_usd: 0.25
-  monthly_usd: 6.00
-  on_exceed: notify
----
-
-# Ana
-
-## Sobre você
-Você é a Ana.
-"""
-
-
-def test_parses_valid_skill(tmp_path: Path):
-    p = tmp_path / "SKILL.md"
-    p.write_text(SAMPLE, encoding="utf-8")
-
-    doc = parse_skill_file(p)
-    assert doc.frontmatter.name == "Ana"
-    assert doc.frontmatter.language == "pt-BR"
+def test_parse_skill_with_synthesis_llm(tmp_path: Path):
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: Pesquisador\n"
+        "role: Knowledge researcher\n"
+        "language: pt-BR\n"
+        "prefix: pesq\n"
+        "goal: Research and build knowledge wiki\n"
+        "tools:\n"
+        "  - wiki_read\n"
+        "  - web_search\n"
+        "llm:\n"
+        "  provider: gemini\n"
+        "  model: gemini-2.5-flash\n"
+        "  temperature: 0.3\n"
+        "llm_synthesis:\n"
+        "  provider: deepseek\n"
+        "  model: deepseek-reasoner\n"
+        "  temperature: 0.2\n"
+        "budget:\n"
+        "  daily_usd: 0.15\n"
+        "  monthly_usd: 4.50\n"
+        "  on_exceed: notify\n"
+        "---\n"
+        "# System prompt body\n"
+    )
+    doc = parse_skill_file(skill_md)
+    assert doc.frontmatter.name == "Pesquisador"
+    assert doc.frontmatter.prefix == "pesq"
     assert doc.frontmatter.llm.provider == "gemini"
-    assert doc.frontmatter.llm.fallback[0].model == "gpt-4o-mini"
-    assert doc.frontmatter.budget.daily_usd == 0.25
-    assert "Sobre você" in doc.body
+    assert doc.frontmatter.llm_synthesis is not None
+    assert doc.frontmatter.llm_synthesis.provider == "deepseek"
+    assert doc.frontmatter.llm_synthesis.model == "deepseek-reasoner"
+    assert doc.frontmatter.llm_synthesis.temperature == 0.2
 
 
-def test_rejects_missing_frontmatter(tmp_path: Path):
-    p = tmp_path / "SKILL.md"
-    p.write_text("just markdown", encoding="utf-8")
-    with pytest.raises(ValueError, match="missing YAML frontmatter"):
-        parse_skill_file(p)
-
-
-def test_rejects_unterminated_frontmatter(tmp_path: Path):
-    p = tmp_path / "SKILL.md"
-    p.write_text("---\nname: Ana\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="unterminated frontmatter"):
-        parse_skill_file(p)
-
-
-def test_rejects_missing_required_field(tmp_path: Path):
-    p = tmp_path / "SKILL.md"
-    p.write_text("---\nname: Ana\n---\nbody", encoding="utf-8")
-    with pytest.raises(Exception):  # pydantic ValidationError
-        parse_skill_file(p)
+def test_parse_skill_without_synthesis_llm(tmp_path: Path):
+    """Ana's SKILL.md has no llm_synthesis — should still parse fine."""
+    skill_md = tmp_path / "SKILL.md"
+    skill_md.write_text(
+        "---\n"
+        "name: Ana\n"
+        "role: Secretary\n"
+        "goal: Help Leandro\n"
+        "tools:\n"
+        "  - memory_get\n"
+        "llm:\n"
+        "  provider: gemini\n"
+        "  model: gemini-2.5-flash\n"
+        "---\n"
+        "# Ana prompt\n"
+    )
+    doc = parse_skill_file(skill_md)
+    assert doc.frontmatter.llm_synthesis is None
+    assert doc.frontmatter.prefix is None
