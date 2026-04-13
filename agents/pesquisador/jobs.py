@@ -70,7 +70,7 @@ def make_weekly_digest_job(
             )
 
             with set_context("weekly_digest"):
-                return llm.complete([
+                return await llm.acomplete([
                     {"role": "system", "content": "Você é o Pesquisador."},
                     {"role": "user", "content": prompt},
                 ])
@@ -118,7 +118,7 @@ def make_wiki_audit_job(
             )
 
             with set_context("wiki_audit"):
-                return llm.complete([
+                return await llm.acomplete([
                     {"role": "system", "content": "Você é o Pesquisador."},
                     {"role": "user", "content": prompt},
                 ])
@@ -188,7 +188,7 @@ def make_proactive_research_job(
             )
 
             with set_context("proactive_research"):
-                improved = llm_synthesis.complete([
+                improved = await llm_synthesis.acomplete([
                     {"role": "system", "content": "Você é um pesquisador técnico especializado."},
                     {"role": "user", "content": prompt},
                 ])

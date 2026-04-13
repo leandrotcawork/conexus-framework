@@ -515,30 +515,34 @@ async def amain() -> None:
         on_exceed=pesq_skill.frontmatter.budget.on_exceed,
     ) if pesq_skill.frontmatter.budget else None
 
+    # Semaphore: max 2 concurrent LLM calls (bot + scheduler don't pile onto Gemini)
+    _llm_sem = asyncio.Semaphore(2)
+
     @retry(
         retry=retry_if_exception_type((
             litellm.exceptions.ServiceUnavailableError,
             litellm.exceptions.RateLimitError,
         )),
-        wait=wait_exponential(multiplier=3, min=3, max=60),
+        wait=wait_exponential(multiplier=2, min=5, max=60),
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    def _llm_call_single(**kwargs):
-        return litellm.completion(**kwargs)
+    async def _llm_call_single(**kwargs):
+        return await litellm.acompletion(**kwargs)
 
-    def _llm_call(fallback_models: list[str] | None = None, **kwargs):
-        """litellm.completion with retry + fallback chain on 503/429."""
-        try:
-            return _llm_call_single(**kwargs)
-        except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError):
-            for fb_model in (fallback_models or []):
-                print(f"[llm] primary failed, trying fallback: {fb_model}", flush=True)
-                try:
-                    return _llm_call_single(**{**kwargs, "model": fb_model})
-                except Exception:
-                    continue
-            raise  # all fallbacks exhausted
+    async def _llm_call(fallback_models: list[str] | None = None, **kwargs):
+        """litellm.acompletion with async retry + fallback chain on 503/429."""
+        async with _llm_sem:
+            try:
+                return await _llm_call_single(**kwargs)
+            except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError):
+                for fb_model in (fallback_models or []):
+                    print(f"[llm] primary failed, trying fallback: {fb_model}", flush=True)
+                    try:
+                        return await _llm_call_single(**{**kwargs, "model": fb_model})
+                    except Exception:
+                        continue
+                raise  # all fallbacks exhausted
 
     def _execute_tool(name: str, args: dict) -> str:
         """Call an AnaTools method by name and return JSON-serialisable result."""
@@ -609,7 +613,7 @@ async def amain() -> None:
         with set_context("reactive"):
             for _turn in range(6):
                 t0 = time.monotonic()
-                resp = _llm_call(
+                resp = await _llm_call(
                     fallback_models=ana_fallbacks,
                     model=full_model,
                     messages=messages,
@@ -724,7 +728,7 @@ async def amain() -> None:
         with set_context("reactive"):
             for _turn in range(20):
                 t0 = time.monotonic()
-                resp = _llm_call(
+                resp = await _llm_call(
                     fallback_models=pesq_fallbacks,
                     model=full_model,
                     messages=messages,

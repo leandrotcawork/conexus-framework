@@ -87,6 +87,62 @@ class TrackedLLM:
         assert last_error is not None
         raise last_error
 
+    async def acomplete(self, messages: list[dict], **kwargs) -> str:
+        """Async version of complete — non-blocking, safe to call from async handlers."""
+        import litellm
+
+        providers_to_try: list[tuple[str, str]] = [(self.config.provider, self.config.model)]
+        if self.config.fallback:
+            providers_to_try += [(f["provider"], f["model"]) for f in self.config.fallback]
+
+        last_error: Exception | None = None
+        for provider, model in providers_to_try:
+            full_model = f"{provider}/{model}"
+            start = time.monotonic()
+            try:
+                resp = await litellm.acompletion(
+                    model=full_model,
+                    messages=messages,
+                    temperature=self.config.temperature,
+                    **kwargs,
+                )
+                duration_ms = int((time.monotonic() - start) * 1000)
+
+                usage = resp.get("usage") if isinstance(resp, dict) else resp.usage
+                input_tokens = getattr(usage, "prompt_tokens", 0) or (usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0)
+                output_tokens = getattr(usage, "completion_tokens", 0) or (usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0)
+
+                self.tracker.log_call(
+                    agent_name=self.agent_name,
+                    provider=provider,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    context=current_context(),
+                    duration_ms=duration_ms,
+                )
+
+                choice = resp["choices"][0] if isinstance(resp, dict) else resp.choices[0]
+                return choice["message"]["content"] if isinstance(choice, dict) else choice.message.content
+
+            except Exception as e:
+                print(f"[llm] {full_model} failed: {e}", flush=True)
+                last_error = e
+                self.tracker.log_call(
+                    agent_name=self.agent_name,
+                    provider=provider,
+                    model=model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    context=current_context(),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    error=str(e)[:500],
+                )
+                continue
+
+        assert last_error is not None
+        raise last_error
+
 
 def build_llm(config: LLMConfig, tracker: UsageTracker, agent_name: str) -> TrackedLLM:
     return TrackedLLM(config, tracker, agent_name)

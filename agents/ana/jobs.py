@@ -72,7 +72,7 @@ def make_briefing_job(
             )
 
             with set_context("briefing"):
-                return llm.complete([
+                return await llm.acomplete([
                     {"role": "system", "content": "Você é a Ana."},
                     {"role": "user", "content": prompt},
                 ])
@@ -107,7 +107,7 @@ def make_recap_job(
             )
 
             with set_context("recap"):
-                return llm.complete([
+                return await llm.acomplete([
                     {"role": "system", "content": "Você é a Ana."},
                     {"role": "user", "content": prompt},
                 ])
