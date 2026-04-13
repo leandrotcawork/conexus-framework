@@ -65,7 +65,7 @@ _ANA_TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "calendar_create_event",
-            "description": "Cria um evento no Google Calendar do Leandro.",
+            "description": "Cria um evento no Google Calendar. Verifica conflitos automaticamente. Se houver conflito, retorna os eventos existentes e pede confirmacao ao Leandro. Use force=true SOMENTE quando o Leandro confirmar que quer manter os dois.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -73,6 +73,7 @@ _ANA_TOOLS_SCHEMA = [
                     "start_iso":   {"type": "string", "description": "Início ISO 8601"},
                     "end_iso":     {"type": "string", "description": "Fim ISO 8601"},
                     "description": {"type": "string"},
+                    "force":       {"type": "boolean", "description": "Se true, cria mesmo com conflito. Use SOMENTE apos confirmacao do Leandro."},
                 },
                 "required": ["title", "start_iso", "end_iso"],
             },

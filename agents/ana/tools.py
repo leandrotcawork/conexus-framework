@@ -22,8 +22,19 @@ class AnaTools:
         return self.calendar.list_events(start_iso, end_iso)
 
     def calendar_create_event(
-        self, title: str, start_iso: str, end_iso: str, description: str | None = None
+        self, title: str, start_iso: str, end_iso: str, description: str | None = None,
+        force: bool = False,
     ) -> dict:
+        # Check for overlapping events unless force=True
+        if not force:
+            existing = self.calendar.list_events(start_iso, end_iso)
+            if existing:
+                conflicts = [f"- {e.get('summary', '(sem titulo)')} ({e.get('start', '')} ~ {e.get('end', '')})" for e in existing]
+                return {
+                    "conflict": True,
+                    "message": f"Conflito de horario! Ja existem {len(existing)} evento(s) nesse periodo:\n" + "\n".join(conflicts),
+                    "hint": "Pergunte ao Leandro como ele quer proceder: reagendar, manter os dois, ou cancelar.",
+                }
         return self.calendar.create_event(title, start_iso, end_iso, description)
 
     def calendar_update_event(
