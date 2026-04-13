@@ -224,21 +224,31 @@ class PesquisadorTools:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         prompt = (
-            f"Compile the following raw sources into a professional wiki article about '{topic}'.\n\n"
+            f"Compile the following raw sources into implementation-grade knowledge about '{topic}'.\n\n"
             f"Raw sources:\n{''.join(raw_contents)}\n\n"
             f"Requirements:\n"
-            f"1. Start with YAML frontmatter: domain (infer from target_path '{target_path}'), "
+            f"1. YAML frontmatter: domain (infer from target_path '{target_path}'), "
             f"confidence: {confidence}, sources: {total}, last_updated: {today}\n"
-            f"2. Write like Wikipedia: structured, factual, dense. Every sentence earns its place.\n"
-            f"3. Sections should adapt to this specific topic -- no fixed template.\n"
-            f"4. Include '## See Also' with [[backlinks]] to related topics.\n"
-            f"5. Include '## Sources' listing the raw/ paths.\n"
-            f"6. Write in Portuguese (pt-BR).\n"
+            f"2. Write like a senior engineer documenting knowledge for their team. "
+            f"Dense, practical, zero fluff. Every section answers 'how do I use this?'\n"
+            f"3. Include practical guidance: when to use what, decision criteria, "
+            f"common pitfalls and how to avoid them.\n"
+            f"4. Include code snippets or configuration examples where applicable "
+            f"(real patterns, not pseudocode).\n"
+            f"5. Sections adapt to the topic -- no fixed template. "
+            f"But always cover: core concepts, implementation patterns, security considerations.\n"
+            f"6. End with '## See Also' with [[backlinks]] and '## Sources' listing raw/ paths.\n"
+            f"7. Write in Portuguese (pt-BR).\n"
         )
 
         with set_context("synthesis"):
             article = self.llm_synthesis.complete([
-                {"role": "system", "content": "You are a professional technical writer compiling research into a structured knowledge article."},
+                {"role": "system", "content": (
+                    "You are a senior software engineer writing internal technical documentation. "
+                    "Your reader is a developer who needs to implement this topic. "
+                    "Be direct, practical, and opinionated about best practices. "
+                    "Include code examples. Skip generic introductions."
+                )},
                 {"role": "user", "content": prompt},
             ])
 
