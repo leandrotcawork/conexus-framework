@@ -447,13 +447,20 @@ async def amain() -> None:
     # --- Knowledge Wiki (Pesquisador) ---
     knowledge_dir = data_dir / "knowledge"
     knowledge_wiki_url = os.environ.get("KNOWLEDGE_WIKI_REPO", "")
-    if knowledge_wiki_url and not (knowledge_dir / ".git").exists():
+    if knowledge_wiki_url:
         import subprocess
-        print(f"Cloning knowledge wiki to {knowledge_dir}...", flush=True)
-        subprocess.run(
-            ["git", "clone", knowledge_wiki_url, str(knowledge_dir)],
-            check=True, capture_output=True, text=True, timeout=60,
-        )
+        if not (knowledge_dir / ".git").exists():
+            print(f"Cloning knowledge wiki to {knowledge_dir}...", flush=True)
+            subprocess.run(
+                ["git", "clone", knowledge_wiki_url, str(knowledge_dir)],
+                check=True, capture_output=True, text=True, timeout=60,
+            )
+        else:
+            print("Pulling latest knowledge wiki...", flush=True)
+            subprocess.run(
+                ["git", "-C", str(knowledge_dir), "pull", "--ff-only"],
+                capture_output=True, text=True, timeout=30,
+            )
     knowledge_wiki = WikiStore(knowledge_dir, autocommit=False)  # git_sync tool handles commits
 
     # --- LLM stack ---
@@ -486,8 +493,7 @@ async def amain() -> None:
         provider=pesq_skill.frontmatter.llm.provider,
         model=pesq_skill.frontmatter.llm.model,
         temperature=pesq_skill.frontmatter.llm.temperature,
-        fallback=[{"provider": pesq_skill.frontmatter.llm_synthesis.provider,
-                   "model": pesq_skill.frontmatter.llm_synthesis.model}],
+        fallback=[{"provider": f.provider, "model": f.model} for f in pesq_skill.frontmatter.llm.fallback],
     )
     pesq_llm = build_llm(pesq_llm_cfg, tracker, agent_name="pesquisador")
 
@@ -509,14 +515,29 @@ async def amain() -> None:
     ) if pesq_skill.frontmatter.budget else None
 
     @retry(
-        retry=retry_if_exception_type(litellm.exceptions.ServiceUnavailableError),
-        wait=wait_exponential(multiplier=2, min=2, max=30),
+        retry=retry_if_exception_type((
+            litellm.exceptions.ServiceUnavailableError,
+            litellm.exceptions.RateLimitError,
+        )),
+        wait=wait_exponential(multiplier=3, min=3, max=60),
         stop=stop_after_attempt(3),
         reraise=True,
     )
-    def _llm_call(**kwargs):
-        """litellm.completion with retry on transient 503/429 errors."""
+    def _llm_call_single(**kwargs):
         return litellm.completion(**kwargs)
+
+    def _llm_call(fallback_models: list[str] | None = None, **kwargs):
+        """litellm.completion with retry + fallback chain on 503/429."""
+        try:
+            return _llm_call_single(**kwargs)
+        except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError):
+            for fb_model in (fallback_models or []):
+                print(f"[llm] primary failed, trying fallback: {fb_model}", flush=True)
+                try:
+                    return _llm_call_single(**{**kwargs, "model": fb_model})
+                except Exception:
+                    continue
+            raise  # all fallbacks exhausted
 
     def _execute_tool(name: str, args: dict) -> str:
         """Call an AnaTools method by name and return JSON-serialisable result."""
@@ -582,11 +603,13 @@ async def amain() -> None:
         ]
 
         full_model = f"{ana_llm_cfg.provider}/{ana_llm_cfg.model}"
+        ana_fallbacks = [f"{f['provider']}/{f['model']}" for f in (ana_llm_cfg.fallback or [])]
 
         with set_context("reactive"):
             for _turn in range(6):
                 t0 = time.monotonic()
                 resp = _llm_call(
+                    fallback_models=ana_fallbacks,
                     model=full_model,
                     messages=messages,
                     tools=_ANA_TOOLS_SCHEMA,
@@ -685,11 +708,13 @@ async def amain() -> None:
         ]
 
         full_model = f"{pesq_llm_cfg.provider}/{pesq_llm_cfg.model}"
+        pesq_fallbacks = [f"{f['provider']}/{f['model']}" for f in (pesq_llm_cfg.fallback or [])]
 
         with set_context("reactive"):
             for _turn in range(20):
                 t0 = time.monotonic()
                 resp = _llm_call(
+                    fallback_models=pesq_fallbacks,
                     model=full_model,
                     messages=messages,
                     tools=_PESQUISADOR_TOOLS_SCHEMA,

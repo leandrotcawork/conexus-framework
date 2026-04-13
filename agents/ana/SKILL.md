@@ -26,6 +26,8 @@ llm:
   provider: gemini
   model: gemini-2.5-flash
   temperature: 0.4
+  fallback:
+    - { provider: gemini, model: gemini-3-flash-preview }
 schedules:
   - { kind: briefing,   cron: "0 7 * * *" }
   - { kind: recap,      cron: "0 21 * * *" }

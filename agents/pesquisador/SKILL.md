@@ -23,6 +23,8 @@ llm:
   provider: gemini
   model: gemini-2.5-flash
   temperature: 0.3
+  fallback:
+    - { provider: gemini, model: gemini-3-flash-preview }
 llm_synthesis:
   provider: gemini
   model: gemini-3.1-pro-preview
