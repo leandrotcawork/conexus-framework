@@ -30,3 +30,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Additional pytest temp dirs (Windows)
+.tmp*/
+pytest-of-*/
