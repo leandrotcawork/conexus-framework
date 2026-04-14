@@ -118,8 +118,13 @@ class WikiStore:
             if result.returncode != 0 and "nothing to commit" not in result.stdout:
                 print(f"[wiki] commit failed: {result.stdout} {result.stderr}", file=sys.stderr)
                 return
+            branch_result = subprocess.run(
+                ["git", "-C", str(self.root), "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            branch = branch_result.stdout.strip() or "main"
             push = subprocess.run(
-                ["git", "-C", str(self.root), "push", "origin", "main"],
+                ["git", "-C", str(self.root), "push", "origin", branch],
                 capture_output=True, text=True, timeout=30,
             )
             if push.returncode != 0:
