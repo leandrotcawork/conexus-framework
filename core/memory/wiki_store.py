@@ -123,6 +123,13 @@ class WikiStore:
                 capture_output=True, text=True, timeout=5,
             )
             branch = branch_result.stdout.strip() or "main"
+            # Skip push if no remote is configured (e.g. local-only wiki in dev)
+            remote_check = subprocess.run(
+                ["git", "-C", str(self.root), "remote", "get-url", "origin"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if remote_check.returncode != 0:
+                return
             push = subprocess.run(
                 ["git", "-C", str(self.root), "push", "origin", branch],
                 capture_output=True, text=True, timeout=30,

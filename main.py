@@ -54,58 +54,83 @@ async def amain() -> None:
     store.init_db()
     wiki = WikiStore(wiki_dir, autocommit=True)
 
-    # --- SSH deploy key for knowledge-wiki (Fly.io only) ---
-    deploy_key = os.environ.get("GITHUB_WIKI_DEPLOY_KEY", "")
-    if deploy_key:
-        import subprocess
+    import subprocess
+    import re
+
+    def _install_ssh_key(key_content: str, filename: str) -> Path:
+        """Write a deploy key to ~/.ssh and add GitHub to known_hosts. Returns key path."""
         ssh_dir = Path.home() / ".ssh"
         ssh_dir.mkdir(mode=0o700, exist_ok=True)
-        key_file = ssh_dir / "pesquisador_deploy"
-        key_file.write_text(deploy_key + "\n")
+        key_file = ssh_dir / filename
+        key_file.write_text(key_content + "\n")
         key_file.chmod(0o600)
-        # Add GitHub to known_hosts
         subprocess.run(
             ["ssh-keyscan", "-t", "ed25519", "github.com"],
             stdout=open(ssh_dir / "known_hosts", "a"),
             stderr=subprocess.DEVNULL,
             timeout=10,
         )
-        # Always set GIT_SSH_COMMAND so push works after clone/pull
-        os.environ["GIT_SSH_COMMAND"] = f"ssh -i {key_file} -o StrictHostKeyChecking=accept-new"
         print(f"[wiki] SSH deploy key configured ({key_file})", flush=True)
+        return key_file
+
+    def _clone_or_pull(repo_url: str, local_dir: Path, key_file: Path | None) -> None:
+        """Clone repo if missing, pull if exists. Switches remote to SSH when key is set."""
+        ssh_cmd = f"ssh -i {key_file} -o StrictHostKeyChecking=accept-new" if key_file else None
+        env = {**os.environ, "GIT_SSH_COMMAND": ssh_cmd} if ssh_cmd else None
+        if not (local_dir / ".git").exists():
+            print(f"[wiki] Cloning {repo_url} → {local_dir}...", flush=True)
+            subprocess.run(
+                ["git", "clone", repo_url, str(local_dir)],
+                check=True, capture_output=True, text=True, timeout=60, env=env,
+            )
+        else:
+            print(f"[wiki] Pulling {local_dir.name}...", flush=True)
+            subprocess.run(
+                ["git", "-C", str(local_dir), "pull", "--ff-only"],
+                capture_output=True, text=True, timeout=30, env=env,
+            )
+        if key_file and (local_dir / ".git").exists():
+            ssh_url = re.sub(
+                r"https://github\.com/(.+?)(?:\.git)?$",
+                r"git@github.com:\1.git",
+                repo_url,
+            )
+            if ssh_url != repo_url:
+                subprocess.run(
+                    ["git", "-C", str(local_dir), "remote", "set-url", "origin", ssh_url],
+                    capture_output=True, text=True,
+                )
+                print(f"[wiki] remote switched to SSH: {ssh_url}", flush=True)
+
+    # --- SSH deploy keys ---
+    ana_deploy_key = os.environ.get("ANA_WIKI_DEPLOY_KEY", "")
+    pesq_deploy_key = os.environ.get("GITHUB_WIKI_DEPLOY_KEY", "")
+
+    ana_key_file: Path | None = None
+    pesq_key_file: Path | None = None
+
+    if ana_deploy_key:
+        ana_key_file = _install_ssh_key(ana_deploy_key, "ana_deploy")
+    if pesq_deploy_key:
+        pesq_key_file = _install_ssh_key(pesq_deploy_key, "pesquisador_deploy")
+
+    # GIT_SSH_COMMAND: use a wrapper that picks the right key per host.
+    # Since both remotes are github.com we set it to the pesquisador key by default
+    # and override per subprocess call via env= where needed.
+    if pesq_key_file:
+        os.environ["GIT_SSH_COMMAND"] = f"ssh -i {pesq_key_file} -o StrictHostKeyChecking=accept-new"
+
+    # --- Ana Wiki ---
+    ana_wiki_url = os.environ.get("ANA_WIKI_REPO", "")
+    if ana_wiki_url:
+        _clone_or_pull(ana_wiki_url, wiki_dir, ana_key_file)
+    wiki = WikiStore(wiki_dir, autocommit=True)
 
     # --- Knowledge Wiki (Pesquisador) ---
     knowledge_dir = data_dir / "knowledge"
     knowledge_wiki_url = os.environ.get("KNOWLEDGE_WIKI_REPO", "")
     if knowledge_wiki_url:
-        import subprocess
-        if not (knowledge_dir / ".git").exists():
-            print(f"Cloning knowledge wiki to {knowledge_dir}...", flush=True)
-            subprocess.run(
-                ["git", "clone", knowledge_wiki_url, str(knowledge_dir)],
-                check=True, capture_output=True, text=True, timeout=60,
-            )
-        else:
-            print("Pulling latest knowledge wiki...", flush=True)
-            subprocess.run(
-                ["git", "-C", str(knowledge_dir), "pull", "--ff-only"],
-                capture_output=True, text=True, timeout=30,
-            )
-        # If deploy key is set, switch remote to SSH so push works
-        # (repo may have been cloned via HTTPS which doesn't support push without PAT)
-        if deploy_key and (knowledge_dir / ".git").exists():
-            import re
-            ssh_url = re.sub(
-                r"https://github\.com/(.+?)(?:\.git)?$",
-                r"git@github.com:\1.git",
-                knowledge_wiki_url,
-            )
-            if ssh_url != knowledge_wiki_url:
-                subprocess.run(
-                    ["git", "-C", str(knowledge_dir), "remote", "set-url", "origin", ssh_url],
-                    capture_output=True, text=True,
-                )
-                print(f"[wiki] remote switched to SSH: {ssh_url}", flush=True)
+        _clone_or_pull(knowledge_wiki_url, knowledge_dir, pesq_key_file)
     knowledge_wiki = WikiStore(knowledge_dir, autocommit=False)  # git_sync tool handles commits
 
     # --- LLM stack ---

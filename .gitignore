@@ -38,6 +38,8 @@ data/
 
 # Secrets / keys
 *.pem
+*_deploy
+*_deploy.*
 *_deploy_key
 wiki_deploy_key*
 wiki_deploy
