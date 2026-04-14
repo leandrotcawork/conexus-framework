@@ -88,12 +88,17 @@ class TelegramBot:
             me = await self.app.bot.get_me()
             self._bot_username = me.username
 
-    async def send_message(self, text: str, chat_id: int | None = None) -> None:
+    async def send(self, text: str, chat_id: int | str | None = None) -> None:
+        """``MessageChannel`` protocol implementation."""
         if self.app is None:
             raise RuntimeError("bot not built")
-        target = chat_id or self.authorized_user_id
+        target = int(chat_id) if chat_id is not None else self.authorized_user_id
         for chunk in self._split_text(text):
             await self.app.bot.send_message(chat_id=target, text=chunk)
+
+    async def send_message(self, text: str, chat_id: int | None = None) -> None:
+        """Backwards-compatible alias for ``send``."""
+        await self.send(text, chat_id)
 
     # ----- handlers -----
 

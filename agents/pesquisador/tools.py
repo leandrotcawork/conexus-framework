@@ -283,3 +283,64 @@ class PesquisadorTools:
         """Commit and push all wiki changes to GitHub."""
         self.wiki._git_commit_push(message)
         return {"ok": True}
+
+
+PesquisadorTools._tool_schemas = {
+    "wiki_read": {
+        "description": "Lê um artigo da wiki de conhecimento. Path relativo, ex: 'domains/backend/auth/oauth2.md'.",
+        "params": {"path": {"description": "Caminho relativo ao artigo"}}
+    },
+    "wiki_write": {
+        "description": "Cria ou atualiza um artigo na wiki. Inclua frontmatter YAML com domain, confidence, sources, last_updated.",
+        "params": {
+            "path": {"description": "Caminho relativo, ex: 'domains/backend/auth/oauth2.md'"},
+            "content": {"description": "Conteúdo completo do artigo em Markdown"}
+        }
+    },
+    "wiki_search": {"description": "Busca artigos na wiki por palavra-chave."},
+    "wiki_list": {
+        "description": "Lista artigos em um domínio da wiki. Ex: 'domains/backend' ou 'entities'.",
+        "params": {"domain": {"description": "Pasta a listar, ex: 'domains/backend'. Vazio para raiz."}}
+    },
+    "web_search": {
+        "description": "Pesquisa na web via DuckDuckGo. Retorna título, URL, snippet e is_trusted. Use tier=1 para fontes confiáveis apenas.",
+        "params": {
+            "query": {"description": "Termo de busca"},
+            "max_results": {"description": "Máximo de resultados (padrão 5)"},
+            "tier": {"description": "1=fontes confiáveis apenas, 2=todas marcadas, 3=web aberta (padrão)"}
+        }
+    },
+    "web_fetch": {
+        "description": "Busca uma página web e extrai o texto. Use para ler artigos completos.",
+        "params": {"url": {"description": "URL completa da página"}}
+    },
+    "youtube_transcript": {
+        "description": "Extrai a transcrição de um vídeo do YouTube.",
+        "params": {"url": {"description": "URL do vídeo do YouTube"}}
+    },
+    "pdf_extract": {
+        "description": "Extrai texto de um arquivo PDF.",
+        "params": {"file_path": {"description": "Caminho do arquivo PDF"}}
+    },
+    "raw_save": {
+        "description": "Salva material fonte bruto em raw/<category>/<filename>. Fontes são imutáveis.",
+        "params": {
+            "category": {"description": "Categoria: articles, transcripts, ou pdfs"},
+            "filename": {"description": "Nome do arquivo, ex: 'oauth2-guide.md'"},
+            "content": {"description": "Conteúdo do material fonte"},
+            "source_url": {"description": "URL original da fonte (para rastrear confiança)"}
+        }
+    },
+    "compile_article": {
+        "description": "Compila fontes brutas (raw/) em um artigo profissional da wiki. Use SEMPRE após salvar fontes em raw/.",
+        "params": {
+            "topic": {"description": "Nome do tema, ex: 'OAuth2'"},
+            "raw_paths": {"description": "Lista de caminhos raw/, ex: ['raw/articles/oauth2-guide.md']"},
+            "target_path": {"description": "Caminho do artigo na wiki, ex: 'domains/backend/auth/oauth2.md'"}
+        }
+    },
+    "git_sync": {
+        "description": "Faz commit e push das alterações da wiki para o GitHub.",
+        "params": {"message": {"description": "Mensagem do commit"}}
+    },
+}
