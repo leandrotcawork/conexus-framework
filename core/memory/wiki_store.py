@@ -50,6 +50,14 @@ class WikiStore:
             out.append(str(p.relative_to(self.root)).replace("\\", "/"))
         return out
 
+    def delete(self, relpath: str) -> None:
+        p = self._resolve(relpath)
+        if not p.exists():
+            raise FileNotFoundError(relpath)
+        p.unlink()
+        if self.autocommit:
+            self._git_commit_push(f"wiki: delete {relpath}")
+
     def search(self, query: str) -> list[dict]:
         q = query.lower()
         hits: list[dict] = []

@@ -12,6 +12,7 @@ tools:
   - wiki_write
   - wiki_search
   - wiki_list
+  - wiki_delete
   - web_search
   - web_fetch
   - youtube_transcript

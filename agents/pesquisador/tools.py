@@ -60,6 +60,18 @@ class PesquisadorTools:
     def wiki_list(self, domain: str = "") -> list[str]:
         return self.wiki.list(domain)
 
+    def wiki_delete(self, path: str) -> dict:
+        """Delete a wiki file and remove it from index.md, then commit."""
+        self.wiki.delete(path)
+        # Remove entry from index.md if present
+        try:
+            index = self.wiki.read("index.md")
+            filtered = [ln for ln in index.splitlines() if f"({path})" not in ln]
+            self.wiki.write("index.md", "\n".join(filtered) + "\n")
+        except FileNotFoundError:
+            pass
+        return {"ok": True, "deleted": path}
+
     # ----- research tools -----
 
     def web_search(self, query: str, max_results: int = 5, tier: int = 3) -> list[dict]:
@@ -301,6 +313,10 @@ PesquisadorTools._tool_schemas = {
     "wiki_list": {
         "description": "Lista artigos em um domínio da wiki. Ex: 'domains/backend' ou 'entities'.",
         "params": {"domain": {"description": "Pasta a listar, ex: 'domains/backend'. Vazio para raiz."}}
+    },
+    "wiki_delete": {
+        "description": "Remove permanentemente um artigo da wiki, limpa o index.md e commita a deleção no git. Use quando o Leandro pedir para apagar ou remover um artigo.",
+        "params": {"path": {"description": "Caminho relativo do artigo a deletar, ex: 'domains/python/async/async_context_manager.md'"}}
     },
     "web_search": {
         "description": "Pesquisa na web via DuckDuckGo. Retorna título, URL, snippet e is_trusted. Use tier=1 para fontes confiáveis apenas.",
