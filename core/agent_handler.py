@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -75,6 +75,10 @@ async def handle_agent_message(
 
     _sent_progress: set[str] = set()
     _is_async_tool = inspect.iscoroutinefunction(cfg.execute_tool)
+
+    # Record the user turn up front so history is preserved even if the
+    # tool loop exhausts max_turns without producing a text reply.
+    store.chat_append(cfg.name, "user", body)
 
     with set_context("reactive"):
         for _turn in range(cfg.max_turns):
@@ -147,8 +151,8 @@ async def handle_agent_message(
                 continue
 
             reply = text_content or "Pronto."
-            store.chat_append(cfg.name, "user", body)
             store.chat_append(cfg.name, "assistant", reply)
             return reply
 
+    store.chat_append(cfg.name, "assistant", cfg.fallback_msg)
     return cfg.fallback_msg

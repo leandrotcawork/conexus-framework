@@ -102,6 +102,8 @@ class TrackedLLM:
         if self.config.fallback:
             providers_to_try += [(f["provider"], f["model"]) for f in self.config.fallback]
 
+        sem = self._sem
+
         @retry(
             retry=retry_if_exception_type((
                 litellm.exceptions.ServiceUnavailableError,
@@ -112,56 +114,58 @@ class TrackedLLM:
             reraise=True,
         )
         async def _acall_single(**completion_kwargs):
-            return await litellm.acompletion(**completion_kwargs)
+            # Acquire the slot only for the in-flight HTTP call; release
+            # during tenacity backoff so other callers can proceed.
+            async with sem:
+                return await litellm.acompletion(**completion_kwargs)
 
         last_error: Exception | None = None
-        async with self._sem:
-            for provider, model in providers_to_try:
-                full_model = f"{provider}/{model}"
-                completion_kwargs = dict(kwargs)
-                completion_kwargs["model"] = full_model
-                completion_kwargs["messages"] = messages
-                completion_kwargs.setdefault("temperature", self.config.temperature)
-                completion_kwargs.setdefault("timeout", 60)
-                start = time.monotonic()
+        for provider, model in providers_to_try:
+            full_model = f"{provider}/{model}"
+            completion_kwargs = dict(kwargs)
+            completion_kwargs["model"] = full_model
+            completion_kwargs["messages"] = messages
+            completion_kwargs.setdefault("temperature", self.config.temperature)
+            completion_kwargs.setdefault("timeout", 60)
+            start = time.monotonic()
 
-                try:
-                    resp = await _acall_single(**completion_kwargs)
-                    duration_ms = int((time.monotonic() - start) * 1000)
+            try:
+                resp = await _acall_single(**completion_kwargs)
+                duration_ms = int((time.monotonic() - start) * 1000)
 
-                    usage = resp.get("usage") if isinstance(resp, dict) else resp.usage
-                    input_tokens = getattr(usage, "prompt_tokens", 0) or (
-                        usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
-                    )
-                    output_tokens = getattr(usage, "completion_tokens", 0) or (
-                        usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
-                    )
+                usage = resp.get("usage") if isinstance(resp, dict) else resp.usage
+                input_tokens = getattr(usage, "prompt_tokens", 0) or (
+                    usage.get("prompt_tokens", 0) if isinstance(usage, dict) else 0
+                )
+                output_tokens = getattr(usage, "completion_tokens", 0) or (
+                    usage.get("completion_tokens", 0) if isinstance(usage, dict) else 0
+                )
 
-                    self.tracker.log_call(
-                        agent_name=self.agent_name,
-                        provider=provider,
-                        model=model,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        context=current_context(),
-                        duration_ms=duration_ms,
-                    )
-                    return resp, full_model
+                self.tracker.log_call(
+                    agent_name=self.agent_name,
+                    provider=provider,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    context=current_context(),
+                    duration_ms=duration_ms,
+                )
+                return resp, full_model
 
-                except Exception as e:
-                    print(f"[llm] {full_model} failed: {e}", flush=True)
-                    last_error = e
-                    self.tracker.log_call(
-                        agent_name=self.agent_name,
-                        provider=provider,
-                        model=model,
-                        input_tokens=0,
-                        output_tokens=0,
-                        context=current_context(),
-                        duration_ms=int((time.monotonic() - start) * 1000),
-                        error=str(e)[:500],
-                    )
-                    continue
+            except Exception as e:
+                print(f"[llm] {full_model} failed: {e}", flush=True)
+                last_error = e
+                self.tracker.log_call(
+                    agent_name=self.agent_name,
+                    provider=provider,
+                    model=model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    context=current_context(),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    error=str(e)[:500],
+                )
+                continue
 
         assert last_error is not None
         raise last_error

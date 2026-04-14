@@ -41,17 +41,6 @@ from core.tools.schema_gen import generate_tool_schemas as _gen_schemas
 
 _BRT = ZoneInfo("America/Sao_Paulo")
 
-# Tool schemas in OpenAI function-calling format.
-def _load_tool_schemas():
-    _ana = parse_skill_file("agents/ana/SKILL.md")
-    _pesq = parse_skill_file("agents/pesquisador/SKILL.md")
-    return (
-        _gen_schemas(AnaTools, _ana.frontmatter.tools),
-        _gen_schemas(PesquisadorTools, _pesq.frontmatter.tools),
-    )
-
-
-_ANA_TOOLS_SCHEMA, _PESQUISADOR_TOOLS_SCHEMA = _load_tool_schemas()
 
 async def amain() -> None:
     load_dotenv()
@@ -169,6 +158,10 @@ async def amain() -> None:
         monthly_usd=pesq_skill.frontmatter.budget.monthly_usd,
         on_exceed=pesq_skill.frontmatter.budget.on_exceed,
     ) if pesq_skill.frontmatter.budget else None
+
+    # --- Auto-generate OpenAI tool schemas from type hints + SKILL.md tool lists ---
+    _ANA_TOOLS_SCHEMA = _gen_schemas(AnaTools, ana_skill.frontmatter.tools)
+    _PESQUISADOR_TOOLS_SCHEMA = _gen_schemas(PesquisadorTools, pesq_skill.frontmatter.tools)
 
     # --- Agent registry (unified tool dispatch) ---
     registry = AgentRegistry()
