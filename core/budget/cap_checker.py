@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from core.llm.usage_tracker import UsageTracker
 
@@ -25,9 +26,9 @@ class CapChecker:
     def __init__(self, tracker: UsageTracker):
         self.tracker = tracker
 
-    def check(self, agent_name: str, cap: BudgetCap) -> CapResult:
+    def check(self, agent_name: str, cap: BudgetCap, tz: ZoneInfo = ZoneInfo("America/Sao_Paulo")) -> CapResult:
         """Return CapResult.allowed=False only if cap.on_exceed == 'halt' and limit crossed."""
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = today_start.replace(day=1)
 
         daily_used = self.tracker.total_usd(agent_name=agent_name, since=today_start)

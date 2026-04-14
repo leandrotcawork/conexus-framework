@@ -7,16 +7,26 @@ by the google-auth library.
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+try:
+    import google.auth.exceptions as google_auth_exceptions
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+except ModuleNotFoundError:  # pragma: no cover - allows tests to import without google sdk
+    google_auth_exceptions = None
+    Request = None  # type: ignore[assignment]
+    Credentials = Any  # type: ignore[assignment]
+    build = None  # type: ignore[assignment]
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
 def _credentials() -> Credentials:
+    if Request is None or build is None or google_auth_exceptions is None:
+        raise RuntimeError("Google Calendar dependencies are not installed")
     client_id = os.environ["GOOGLE_OAUTH_CLIENT_ID"]
     client_secret = os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]
     refresh_token = os.environ["GOOGLE_OAUTH_REFRESH_TOKEN"]
@@ -29,7 +39,11 @@ def _credentials() -> Credentials:
         scopes=SCOPES,
     )
     if not creds.valid:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except google_auth_exceptions.RefreshError as e:
+            print(f"[calendar] credential refresh failed: {e}", file=sys.stderr, flush=True)
+            raise
     return creds
 
 
@@ -41,7 +55,11 @@ class GoogleCalendarClient:
     @property
     def service(self):
         if self._service is None:
-            self._service = build("calendar", "v3", credentials=_credentials(), cache_discovery=False)
+            try:
+                self._service = build("calendar", "v3", credentials=_credentials(), cache_discovery=False)
+            except google_auth_exceptions.RefreshError:
+                self._service = None
+                raise
         return self._service
 
     def list_events(self, start_iso: str, end_iso: str) -> list[dict]:

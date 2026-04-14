@@ -4,10 +4,15 @@ that binds the agent's stores/clients into closures."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from core.memory.google_calendar import GoogleCalendarClient
 from core.memory.sqlite_store import SqliteStore
 from core.memory.wiki_store import WikiStore
+
+if TYPE_CHECKING:
+    from core.memory.google_calendar import GoogleCalendarClient
+else:
+    GoogleCalendarClient = Any
 
 
 @dataclass

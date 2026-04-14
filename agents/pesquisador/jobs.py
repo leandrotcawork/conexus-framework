@@ -9,8 +9,10 @@ from zoneinfo import ZoneInfo
 
 from agents.pesquisador.tools import PesquisadorTools
 from core.llm.context_tag import set_context
-from core.llm.router import TrackedLLM
 from core.memory.sqlite_store import SqliteStore
+
+# LlmCallFn: async callable matching _llm_call signature in main.py
+LlmCallFn = Callable[..., Awaitable[str]]
 
 TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -37,7 +39,7 @@ async def _run_with_ping_log(
 
 def make_weekly_digest_job(
     tools: PesquisadorTools,
-    llm: TrackedLLM,
+    llm_call: LlmCallFn,
     store: SqliteStore,
     send_telegram: Callable[[str], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
@@ -70,10 +72,12 @@ def make_weekly_digest_job(
             )
 
             with set_context("weekly_digest"):
-                return await llm.acomplete([
-                    {"role": "system", "content": "Você é o Pesquisador."},
-                    {"role": "user", "content": prompt},
-                ])
+                return await llm_call(
+                    messages=[
+                        {"role": "system", "content": "Você é o Pesquisador."},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
 
         await _run_with_ping_log(
             store, "weekly_digest", ref_id, "pesquisador", body, send_telegram
@@ -84,7 +88,7 @@ def make_weekly_digest_job(
 
 def make_wiki_audit_job(
     tools: PesquisadorTools,
-    llm: TrackedLLM,
+    llm_call: LlmCallFn,
     store: SqliteStore,
     send_telegram: Callable[[str], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
@@ -118,10 +122,12 @@ def make_wiki_audit_job(
             )
 
             with set_context("wiki_audit"):
-                return await llm.acomplete([
-                    {"role": "system", "content": "Você é o Pesquisador."},
-                    {"role": "user", "content": prompt},
-                ])
+                return await llm_call(
+                    messages=[
+                        {"role": "system", "content": "Você é o Pesquisador."},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
 
         await _run_with_ping_log(
             store, "wiki_audit", ref_id, "pesquisador", body, send_telegram
@@ -132,8 +138,8 @@ def make_wiki_audit_job(
 
 def make_proactive_research_job(
     tools: PesquisadorTools,
-    llm: TrackedLLM,
-    llm_synthesis: TrackedLLM,
+    llm_call: LlmCallFn,
+    llm_synthesis_call: LlmCallFn,
     store: SqliteStore,
     send_telegram: Callable[[str], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
@@ -188,10 +194,12 @@ def make_proactive_research_job(
             )
 
             with set_context("proactive_research"):
-                improved = await llm_synthesis.acomplete([
-                    {"role": "system", "content": "Você é um pesquisador técnico especializado."},
-                    {"role": "user", "content": prompt},
-                ])
+                improved = await llm_synthesis_call(
+                    messages=[
+                        {"role": "system", "content": "Você é um pesquisador técnico especializado."},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
 
             tools.wiki_write(target, improved)
             tools.wiki.append_log("proactive", f"Improved {target}", f"Upgraded via proactive research")

@@ -40,3 +40,5 @@ data/
 *.pem
 *_deploy_key
 wiki_deploy_key*
+wiki_deploy
+wiki_deploy.*

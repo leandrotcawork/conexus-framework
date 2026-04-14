@@ -187,7 +187,7 @@ class PesquisadorTools:
         self.wiki.write(path, content)
         return {"ok": True, "path": path}
 
-    def compile_article(self, topic: str, raw_paths: list[str], target_path: str) -> dict:
+    async def compile_article(self, topic: str, raw_paths: list[str], target_path: str) -> dict:
         """Compile raw sources into a professional wiki article using R1 synthesis LLM.
         This is the ONLY tool that should create/update wiki articles from research."""
         from core.llm.context_tag import set_context
@@ -256,7 +256,7 @@ class PesquisadorTools:
         )
 
         with set_context("synthesis"):
-            article = self.llm_synthesis.complete([
+            article = await self.llm_synthesis.acomplete([
                 {"role": "system", "content": (
                     "You are a senior software engineer with deep expertise writing the definitive "
                     "technical reference on each topic. Use your full knowledge — the raw sources are "

@@ -48,6 +48,7 @@ class TrackedLLM:
                     model=full_model,
                     messages=messages,
                     temperature=self.config.temperature,
+                    timeout=60,
                     **kwargs,
                 )
                 duration_ms = int((time.monotonic() - start) * 1000)
@@ -104,6 +105,7 @@ class TrackedLLM:
                     model=full_model,
                     messages=messages,
                     temperature=self.config.temperature,
+                    timeout=60,
                     **kwargs,
                 )
                 duration_ms = int((time.monotonic() - start) * 1000)

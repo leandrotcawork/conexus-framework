@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -545,17 +547,20 @@ async def amain() -> None:
     async def _llm_call_single(**kwargs):
         return await litellm.acompletion(**kwargs)
 
-    async def _llm_call(fallback_models: list[str] | None = None, **kwargs):
-        """litellm.acompletion with async retry + fallback chain on 503/429."""
+    async def _llm_call(fallback_models: list[str] | None = None, **kwargs) -> tuple:
+        """litellm.acompletion with async retry + fallback chain on 503/429.
+        Returns (response, actual_model) so callers can log which model answered."""
         async with _llm_sem:
             try:
-                return await _llm_call_single(**kwargs)
+                resp = await _llm_call_single(**kwargs)
+                return resp, kwargs.get("model", "unknown")
             except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError) as primary_err:
                 print(f"[llm] primary failed ({type(primary_err).__name__}): {str(primary_err)[:200]}", flush=True)
                 for fb_model in (fallback_models or []):
                     print(f"[llm] trying fallback: {fb_model}", flush=True)
                     try:
-                        return await _llm_call_single(**{**kwargs, "model": fb_model})
+                        resp = await _llm_call_single(**{**kwargs, "model": fb_model})
+                        return resp, fb_model
                     except Exception as fb_err:
                         print(f"[llm] fallback {fb_model} also failed: {str(fb_err)[:200]}", flush=True)
                         continue
@@ -570,16 +575,18 @@ async def amain() -> None:
             result = fn(**args)
             return json.dumps(result, ensure_ascii=False, default=str)
         except Exception as exc:
+            traceback.print_exc()
             return json.dumps({"error": str(exc)})
 
-    def _execute_pesq_tool(name: str, args: dict) -> str:
+    async def _execute_pesq_tool(name: str, args: dict) -> str:
         fn = getattr(pesq_tools, name, None)
         if fn is None:
             return json.dumps({"error": f"ferramenta desconhecida: {name}"})
         try:
-            result = fn(**args)
+            result = await fn(**args) if inspect.iscoroutinefunction(fn) else fn(**args)
             return json.dumps(result, ensure_ascii=False, default=str)
         except Exception as exc:
+            traceback.print_exc()
             return json.dumps({"error": str(exc)})
 
     # --- Bot ---
@@ -630,7 +637,7 @@ async def amain() -> None:
         with set_context("reactive"):
             for _turn in range(6):
                 t0 = time.monotonic()
-                resp = await _llm_call(
+                resp, actual_model = await _llm_call(
                     fallback_models=ana_fallbacks,
                     model=full_model,
                     messages=messages,
@@ -640,11 +647,12 @@ async def amain() -> None:
                 )
                 duration_ms = int((time.monotonic() - t0) * 1000)
 
+                actual_provider, actual_model_name = actual_model.split("/", 1) if "/" in actual_model else (ana_llm_cfg.provider, actual_model)
                 usage = resp.usage
                 tracker.log_call(
                     agent_name="ana",
-                    provider=ana_llm_cfg.provider,
-                    model=ana_llm_cfg.model,
+                    provider=actual_provider,
+                    model=actual_model_name,
                     input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                     output_tokens=getattr(usage, "completion_tokens", 0) or 0,
                     context="reactive",
@@ -745,7 +753,7 @@ async def amain() -> None:
         with set_context("reactive"):
             for _turn in range(20):
                 t0 = time.monotonic()
-                resp = await _llm_call(
+                resp, actual_model = await _llm_call(
                     fallback_models=pesq_fallbacks,
                     model=full_model,
                     messages=messages,
@@ -755,11 +763,12 @@ async def amain() -> None:
                 )
                 duration_ms = int((time.monotonic() - t0) * 1000)
 
+                actual_provider, actual_model_name = actual_model.split("/", 1) if "/" in actual_model else (pesq_llm_cfg.provider, actual_model)
                 usage = resp.usage
                 tracker.log_call(
                     agent_name="pesquisador",
-                    provider=pesq_llm_cfg.provider,
-                    model=pesq_llm_cfg.model,
+                    provider=actual_provider,
+                    model=actual_model_name,
                     input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
                     output_tokens=getattr(usage, "completion_tokens", 0) or 0,
                     context="reactive",
@@ -787,7 +796,7 @@ async def amain() -> None:
                         if progress and fn_name in _PESQ_PROGRESS and fn_name not in _sent_progress:
                             _sent_progress.add(fn_name)
                             await progress(_PESQ_PROGRESS[fn_name])
-                        result = _execute_pesq_tool(fn_name, fn_args)
+                        result = await _execute_pesq_tool(fn_name, fn_args)
                         # Truncate oversized tool results to control token growth
                         if len(result) > 25000:
                             result = result[:25000] + "\n[... truncado]"
@@ -853,12 +862,33 @@ async def amain() -> None:
     async def send_pesq_to_leandro(text: str) -> None:
         await pesq_bot.send_message(text)
 
+    # --- LLM call wrappers for jobs (route through semaphore) ---
+    ana_full_model = f"{ana_llm_cfg.provider}/{ana_llm_cfg.model}"
+    ana_fb = [f"{f['provider']}/{f['model']}" for f in (ana_llm_cfg.fallback or [])]
+    pesq_full_model = f"{pesq_llm_cfg.provider}/{pesq_llm_cfg.model}"
+    pesq_fb = [f"{f['provider']}/{f['model']}" for f in (pesq_llm_cfg.fallback or [])]
+
+    async def _ana_llm_call(**kwargs) -> str:
+        resp, _ = await _llm_call(fallback_models=ana_fb, model=ana_full_model, **kwargs)
+        return resp.choices[0].message.content or ""
+
+    async def _pesq_llm_call(**kwargs) -> str:
+        resp, _ = await _llm_call(fallback_models=pesq_fb, model=pesq_full_model, **kwargs)
+        return resp.choices[0].message.content or ""
+
+    pesq_synth_model = f"{pesq_synthesis_cfg.provider}/{pesq_synthesis_cfg.model}"
+    pesq_synth_fb = [f"{f['provider']}/{f['model']}" for f in (pesq_synthesis_cfg.fallback or [])]
+
+    async def _pesq_synthesis_call(**kwargs) -> str:
+        resp, _ = await _llm_call(fallback_models=pesq_synth_fb, model=pesq_synth_model, **kwargs)
+        return resp.choices[0].message.content or ""
+
     # --- Scheduler ---
     scheduler = ConexusScheduler(store, tz="America/Sao_Paulo")
     scheduler.add_job(JobSpec("ana", "briefing",   "0 7 * * *",
-                              make_briefing_job(ana_tools, ana_llm, send_to_leandro)))
+                              make_briefing_job(ana_tools, _ana_llm_call, send_to_leandro)))
     scheduler.add_job(JobSpec("ana", "recap",      "0 21 * * *",
-                              make_recap_job(ana_tools, ana_llm, send_to_leandro)))
+                              make_recap_job(ana_tools, _ana_llm_call, send_to_leandro)))
     scheduler.add_job(JobSpec("ana", "pre_event",  "*/5 * * * *",
                               make_pre_event_job(ana_tools, send_to_leandro)))
     scheduler.add_job(JobSpec("ana", "todo_sweep", "0 9-20 * * *",
@@ -866,11 +896,11 @@ async def amain() -> None:
     scheduler.add_job(JobSpec("ana", "lint",       "0 22 * * 0",
                               make_lint_job(ana_tools, send_to_leandro)))
     scheduler.add_job(JobSpec("pesquisador", "weekly_digest", "0 20 * * 0",
-                              make_weekly_digest_job(pesq_tools, pesq_llm, store, send_pesq_to_leandro)))
+                              make_weekly_digest_job(pesq_tools, _pesq_llm_call, store, send_pesq_to_leandro)))
     scheduler.add_job(JobSpec("pesquisador", "wiki_audit", "0 10 1 * *",
-                              make_wiki_audit_job(pesq_tools, pesq_llm, store, send_pesq_to_leandro)))
+                              make_wiki_audit_job(pesq_tools, _pesq_llm_call, store, send_pesq_to_leandro)))
     scheduler.add_job(JobSpec("pesquisador", "proactive_research", "0 14 * * 3,6",
-                              make_proactive_research_job(pesq_tools, pesq_llm, pesq_llm_synthesis, store, send_pesq_to_leandro)))
+                              make_proactive_research_job(pesq_tools, _pesq_llm_call, _pesq_synthesis_call, store, send_pesq_to_leandro)))
 
     # --- Start both bots ---
     await ana_app.initialize()

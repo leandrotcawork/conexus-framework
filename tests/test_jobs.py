@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,22 +14,39 @@ from agents.ana.jobs import (
     make_recap_job,
     make_todo_sweep_job,
 )
-from agents.ana.tools import AnaTools
 from core.memory.sqlite_store import SqliteStore
 from core.memory.wiki_store import WikiStore
 
 
-def _make_tools(tmp_db_path: Path, tmp_wiki_dir: Path) -> AnaTools:
+class _Tools:
+    def __init__(self, store: SqliteStore, wiki: WikiStore, calendar: MagicMock):
+        self.store = store
+        self.wiki = wiki
+        self.calendar = calendar
+
+    def calendar_list_events(self, start_iso: str, end_iso: str) -> list[dict]:
+        return self.calendar.list_events(start_iso, end_iso)
+
+    def todos_list(self, status: str = "open") -> list[dict]:
+        return self.store.todos_list(status)
+
+    def memory_list_facts(self) -> list[dict]:
+        return self.store.facts_list()
+
+    def wiki_append_log(self, kind: str, title: str, body: str) -> dict:
+        self.wiki.append_log(kind, title, body)
+        return {"ok": True}
+
+
+def _make_tools(tmp_db_path: Path, tmp_wiki_dir: Path) -> Any:
     store = SqliteStore(tmp_db_path)
     store.init_db()
     wiki = WikiStore(tmp_wiki_dir, autocommit=False)
-    return AnaTools(store=store, wiki=wiki, calendar=MagicMock())
+    return _Tools(store=store, wiki=wiki, calendar=MagicMock())
 
 
-def _mock_llm(response: str = "Bom dia!") -> MagicMock:
-    llm = MagicMock()
-    llm.complete.return_value = response
-    return llm
+def _mock_llm(response: str = "Bom dia!") -> AsyncMock:
+    return AsyncMock(return_value=response)
 
 
 @pytest.mark.asyncio

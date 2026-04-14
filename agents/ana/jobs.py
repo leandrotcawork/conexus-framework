@@ -5,13 +5,18 @@ tools, LLM, and scheduler state it needs. Main.py wires everything together.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from agents.ana.tools import AnaTools
 from core.llm.context_tag import set_context
-from core.llm.router import TrackedLLM
 from core.memory.sqlite_store import SqliteStore
+
+if TYPE_CHECKING:
+    from agents.ana.tools import AnaTools
+
+# LlmCallFn: async callable matching _llm_call signature in main.py
+# (messages, **kwargs) -> str
+LlmCallFn = Callable[..., Awaitable[str]]
 
 TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -45,7 +50,7 @@ async def _run_with_ping_log(
 
 def make_briefing_job(
     tools: AnaTools,
-    llm: TrackedLLM,
+    llm_call: LlmCallFn,
     send_telegram: Callable[[str], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
     async def run() -> None:
@@ -72,10 +77,12 @@ def make_briefing_job(
             )
 
             with set_context("briefing"):
-                return await llm.acomplete([
-                    {"role": "system", "content": "Você é a Ana."},
-                    {"role": "user", "content": prompt},
-                ])
+                return await llm_call(
+                    messages=[
+                        {"role": "system", "content": "Você é a Ana."},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
 
         await _run_with_ping_log(
             tools.store, "briefing", ref_id, "ana", body, send_telegram
@@ -86,7 +93,7 @@ def make_briefing_job(
 
 def make_recap_job(
     tools: AnaTools,
-    llm: TrackedLLM,
+    llm_call: LlmCallFn,
     send_telegram: Callable[[str], Awaitable[None]],
 ) -> Callable[[], Awaitable[None]]:
     async def run() -> None:
@@ -107,10 +114,12 @@ def make_recap_job(
             )
 
             with set_context("recap"):
-                return await llm.acomplete([
-                    {"role": "system", "content": "Você é a Ana."},
-                    {"role": "user", "content": prompt},
-                ])
+                return await llm_call(
+                    messages=[
+                        {"role": "system", "content": "Você é a Ana."},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
 
         await _run_with_ping_log(
             tools.store, "recap", ref_id, "ana", body, send_telegram

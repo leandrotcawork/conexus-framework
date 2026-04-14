@@ -9,11 +9,19 @@ from __future__ import annotations
 
 import base64
 import os
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 import litellm
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+try:
+    from telegram import Update
+    from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+except ModuleNotFoundError:  # pragma: no cover - exercised only in minimal test envs
+    Update = Any  # type: ignore[assignment]
+    Application = Any  # type: ignore[assignment]
+    CommandHandler = None  # type: ignore[assignment]
+    ContextTypes = Any  # type: ignore[assignment]
+    MessageHandler = None  # type: ignore[assignment]
+    filters = None  # type: ignore[assignment]
 
 
 ProgressFn = Callable[[str], Awaitable[None]]
@@ -21,6 +29,9 @@ ProgressFn = Callable[[str], Awaitable[None]]
 
 MessageHandlerFn = Callable[[str, str, ProgressFn | None], Awaitable[str]]
 # signature: handler(chat_text, agent_name, progress_fn) -> reply_text
+
+
+_TG_MAX_LENGTH = 4096
 
 
 class TelegramBot:
@@ -42,7 +53,27 @@ class TelegramBot:
         self.app: Application | None = None
         self._bot_username: str | None = None  # filled after build()
 
+    @staticmethod
+    def _split_text(text: str) -> list[str]:
+        """Split text into chunks that fit Telegram's message limit."""
+        if len(text) <= _TG_MAX_LENGTH:
+            return [text]
+        chunks: list[str] = []
+        while text:
+            if len(text) <= _TG_MAX_LENGTH:
+                chunks.append(text)
+                break
+            # Try to split at last newline within limit
+            cut = text.rfind("\n", 0, _TG_MAX_LENGTH)
+            if cut <= 0:
+                cut = _TG_MAX_LENGTH
+            chunks.append(text[:cut])
+            text = text[cut:].lstrip("\n")
+        return chunks
+
     def build(self) -> Application:
+        if CommandHandler is None or MessageHandler is None or filters is None:
+            raise RuntimeError("python-telegram-bot is required to build TelegramBot")
         self.app = Application.builder().token(self.token).build()
         self.app.add_handler(CommandHandler("uso", self._on_usage))
         self.app.add_handler(CommandHandler("usage", self._on_usage))
@@ -61,7 +92,8 @@ class TelegramBot:
         if self.app is None:
             raise RuntimeError("bot not built")
         target = chat_id or self.authorized_user_id
-        await self.app.bot.send_message(chat_id=target, text=text)
+        for chunk in self._split_text(text):
+            await self.app.bot.send_message(chat_id=target, text=chunk)
 
     # ----- handlers -----
 
@@ -117,14 +149,16 @@ class TelegramBot:
             return
 
         async def _progress(status: str) -> None:
-            await update.message.reply_text(status)
+            for chunk in self._split_text(status):
+                await update.message.reply_text(chunk)
 
         try:
             reply = await self.message_handler(body, self.agent_name, _progress)
         except Exception as e:
             print(f"[{self.agent_name}] error: {e}", flush=True)
             reply = "Desculpa, tive um problema temporario. Tenta de novo em alguns segundos."
-        await update.message.reply_text(reply)
+        for chunk in self._split_text(reply):
+            await update.message.reply_text(chunk)
 
     async def _on_voice(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._authorized(update) or not self._is_for_me(update):
@@ -136,7 +170,7 @@ class TelegramBot:
             encoded = base64.b64encode(audio_bytes).decode("utf-8")
 
             model = os.environ.get("GEMINI_MODEL", "gemini/gemini-2.5-flash")
-            resp = litellm.completion(
+            resp = await litellm.acompletion(
                 model=model,
                 messages=[{
                     "role": "user",
@@ -152,10 +186,18 @@ class TelegramBot:
             return
 
         async def _progress(status: str) -> None:
-            await update.message.reply_text(status)
+            for chunk in self._split_text(status):
+                await update.message.reply_text(chunk)
 
-        reply = await self.message_handler(transcribed, self.agent_name, _progress)
-        await update.message.reply_text(f'🎙 *"{transcribed}"*\n\n{reply}', parse_mode="Markdown")
+        try:
+            reply = await self.message_handler(transcribed, self.agent_name, _progress)
+            full = f'🎙 *"{transcribed}"*\n\n{reply}'
+            for i, chunk in enumerate(self._split_text(full)):
+                kwargs = {"parse_mode": "Markdown"} if i == 0 else {}
+                await update.message.reply_text(chunk, **kwargs)
+        except Exception as e:
+            print(f"[{self.agent_name}] voice handler error: {e}", flush=True)
+            await update.message.reply_text("Desculpa, tive um problema ao processar o audio. Tenta de novo.")
 
     async def _on_document(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self._authorized(update) or not self._is_for_me(update):
@@ -176,10 +218,12 @@ class TelegramBot:
             body = f"resuma este PDF\n[PDF_PATH:{tmp_path}]"
 
             async def _progress(status: str) -> None:
-                await update.message.reply_text(status)
+                for chunk in self._split_text(status):
+                    await update.message.reply_text(chunk)
 
             reply = await self.message_handler(body, self.agent_name, _progress)
-            await update.message.reply_text(reply)
+            for chunk in self._split_text(reply):
+                await update.message.reply_text(chunk)
         except Exception as e:
             await update.message.reply_text(f"Erro ao processar PDF: {e}")
         finally:
@@ -194,4 +238,5 @@ class TelegramBot:
             await update.message.reply_text("uso nao disponivel")
             return
         reply = await self.usage_command_handler(args)
-        await update.message.reply_text(reply)
+        for chunk in self._split_text(reply):
+            await update.message.reply_text(chunk)
