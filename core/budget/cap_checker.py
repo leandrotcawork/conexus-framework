@@ -35,10 +35,10 @@ class CapChecker:
         monthly_used = self.tracker.total_usd(agent_name=agent_name, since=month_start)
 
         if daily_used >= cap.daily_usd:
-            if cap.on_exceed == "halt":
-                return CapResult(allowed=False, reason=f"daily cap reached ({daily_used:.4f} / {cap.daily_usd:.4f})")
+            reason = f"daily cap reached ({daily_used:.4f} / {cap.daily_usd:.4f})"
+            return CapResult(allowed=(cap.on_exceed == "notify"), reason=reason)
         if monthly_used >= cap.monthly_usd:
-            if cap.on_exceed == "halt":
-                return CapResult(allowed=False, reason=f"monthly cap reached ({monthly_used:.4f} / {cap.monthly_usd:.4f})")
+            reason = f"monthly cap reached ({monthly_used:.4f} / {cap.monthly_usd:.4f})"
+            return CapResult(allowed=(cap.on_exceed == "notify"), reason=reason)
 
         return CapResult(allowed=True)
