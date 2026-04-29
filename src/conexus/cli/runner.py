@@ -19,8 +19,6 @@ class AgentRuntime:
     tools_schema: list[dict]
 
 
-# Scaffolding for Phase 6.5 CLI entry point — not yet called by telegram_runner.py.
-# telegram_runner.py still uses direct construction for now.
 def build_runtime(
     skill_path: str,
     *,

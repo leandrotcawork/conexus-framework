@@ -25,9 +25,9 @@ from agents.pesquisador.jobs import (
     make_wiki_audit_job,
 )
 from agents.pesquisador.tools import PesquisadorTools
-from conexus.core.agent_handler import AgentHandlerConfig, handle_agent_message
+from conexus.core.agent_handler import handle_agent_message
 from conexus.core.agent_registry import AgentRegistry
-from conexus.core.budget.cap_checker import BudgetCap, CapChecker
+from conexus.core.budget.cap_checker import CapChecker
 from conexus.core.llm.router import LLMConfig, build_llm
 from conexus.core.llm.usage_tracker import UsageTracker
 from conexus.core.memory.google_calendar import GoogleCalendarClient
@@ -36,7 +36,7 @@ from conexus.core.memory.wiki_store import WikiStore
 from conexus.core.messaging.telegram_bot import TelegramBot
 from conexus.core.config.skill_loader import parse_skill_file
 from conexus.core.scheduler.scheduler import ConexusScheduler, JobSpec
-from conexus.core.tools.schema_gen import generate_tool_schemas as _gen_schemas
+from conexus.cli.runner import build_runtime
 
 
 def _install_ssh_key(key_content: str, filename: str) -> Path:
@@ -178,67 +178,19 @@ async def run() -> None:
 
     # --- Load Ana ---
     ana_skill = parse_skill_file("agents/ana/SKILL.md")
-    ana_llm_cfg = LLMConfig(
-        provider=ana_skill.frontmatter.llm.provider,
-        model=ana_skill.frontmatter.llm.model,
-        temperature=ana_skill.frontmatter.llm.temperature,
-        fallback=[{"provider": f.provider, "model": f.model} for f in ana_skill.frontmatter.llm.fallback],
-    )
-    ana_llm = build_llm(ana_llm_cfg, tracker, agent_name="ana")
     ana_tools = AnaTools(
         store=store,
         wiki=wiki,
         calendar=GoogleCalendarClient(),
     )
-    ana_cap = BudgetCap(
-        daily_usd=ana_skill.frontmatter.budget.daily_usd,
-        monthly_usd=ana_skill.frontmatter.budget.monthly_usd,
-        on_exceed=ana_skill.frontmatter.budget.on_exceed,
-    ) if ana_skill.frontmatter.budget else None
-
-    # --- Load Pesquisador ---
-    pesq_skill = parse_skill_file("agents/pesquisador/SKILL.md")
-    pesq_llm_cfg = LLMConfig(
-        provider=pesq_skill.frontmatter.llm.provider,
-        model=pesq_skill.frontmatter.llm.model,
-        temperature=pesq_skill.frontmatter.llm.temperature,
-        fallback=[{"provider": f.provider, "model": f.model} for f in pesq_skill.frontmatter.llm.fallback],
-    )
-    pesq_llm = build_llm(pesq_llm_cfg, tracker, agent_name="pesquisador")
-
-    pesq_synthesis_cfg = LLMConfig(
-        provider=pesq_skill.frontmatter.llm_synthesis.provider,
-        model=pesq_skill.frontmatter.llm_synthesis.model,
-        temperature=pesq_skill.frontmatter.llm_synthesis.temperature,
-        fallback=[{"provider": pesq_skill.frontmatter.llm.provider,
-                   "model": pesq_skill.frontmatter.llm.model}],
-    )
-    pesq_llm_synthesis = build_llm(pesq_synthesis_cfg, tracker, agent_name="pesquisador")
-
-    pesq_tools = PesquisadorTools(wiki=knowledge_wiki, llm_synthesis=pesq_llm_synthesis)
-
-    pesq_cap = BudgetCap(
-        daily_usd=pesq_skill.frontmatter.budget.daily_usd,
-        monthly_usd=pesq_skill.frontmatter.budget.monthly_usd,
-        on_exceed=pesq_skill.frontmatter.budget.on_exceed,
-    ) if pesq_skill.frontmatter.budget else None
-
-    # --- Auto-generate OpenAI tool schemas from type hints + SKILL.md tool lists ---
-    _ANA_TOOLS_SCHEMA = _gen_schemas(AnaTools, ana_skill.frontmatter.tools)
-    _PESQUISADOR_TOOLS_SCHEMA = _gen_schemas(PesquisadorTools, pesq_skill.frontmatter.tools)
 
     # --- Agent registry (unified tool dispatch) ---
     registry = AgentRegistry()
     registry.register("ana", ana_tools)
-    registry.register("pesquisador", pesq_tools)
 
     async def _ana_execute(name: str, args: dict) -> str:
         return await registry.execute_tool("ana", name, args)
 
-    async def _pesq_execute(name: str, args: dict) -> str:
-        return await registry.execute_tool("pesquisador", name, args)
-
-    # --- Per-agent handler configs ---
     _ana_system_prompt = (
         f"{ana_skill.frontmatter.goal}\n\n"
         f"{ana_skill.body}\n\n"
@@ -252,18 +204,36 @@ async def run() -> None:
         "Se o Leandro pedir para agendar algo, você DEVE chamar calendar_create_event "
         "com os dados corretos. Nunca responda 'pronto' sem ter executado a ferramenta."
     )
-    _ana_handler_cfg = AgentHandlerConfig(
-        name="ana",
-        llm=ana_llm,
-        tools_schema=_ANA_TOOLS_SCHEMA,
+    _ana_runtime = build_runtime(
+        "agents/ana/SKILL.md",
+        tools_obj=ana_tools,
         execute_tool=_ana_execute,
+        tracker=tracker,
+        agent_name="ana",
         system_prompt=_ana_system_prompt,
-        max_turns=6,
-        cap=ana_cap,
         cap_exceeded_msg="Orçamento diário atingido. Volto amanhã cedinho.",
-        include_facts=True,
         fallback_msg="Não consegui completar a tarefa.",
+        max_turns=6,
     )
+    _ana_handler_cfg = _ana_runtime.handler_cfg
+    ana_llm = _ana_handler_cfg.llm
+
+    # --- Load Pesquisador ---
+    pesq_skill = parse_skill_file("agents/pesquisador/SKILL.md")
+    pesq_synthesis_cfg = LLMConfig(
+        provider=pesq_skill.frontmatter.llm_synthesis.provider,
+        model=pesq_skill.frontmatter.llm_synthesis.model,
+        temperature=pesq_skill.frontmatter.llm_synthesis.temperature,
+        fallback=[{"provider": pesq_skill.frontmatter.llm.provider,
+                   "model": pesq_skill.frontmatter.llm.model}],
+    )
+    pesq_llm_synthesis = build_llm(pesq_synthesis_cfg, tracker, agent_name="pesquisador")
+    pesq_tools = PesquisadorTools(wiki=knowledge_wiki, llm_synthesis=pesq_llm_synthesis)
+
+    registry.register("pesquisador", pesq_tools)
+
+    async def _pesq_execute(name: str, args: dict) -> str:
+        return await registry.execute_tool("pesquisador", name, args)
 
     _pesq_system_prompt = (
         f"{pesq_skill.frontmatter.goal}\n\n"
@@ -283,15 +253,16 @@ async def run() -> None:
         "Um artigo de Wikipedia sozinho não é suficiente — busque documentação oficial, "
         "RFC, guias técnicos, tutoriais de implementação. Profundidade técnica é obrigatória."
     )
-    _pesq_handler_cfg = AgentHandlerConfig(
-        name="pesquisador",
-        llm=pesq_llm,
-        tools_schema=_PESQUISADOR_TOOLS_SCHEMA,
+    _pesq_runtime = build_runtime(
+        "agents/pesquisador/SKILL.md",
+        tools_obj=pesq_tools,
         execute_tool=_pesq_execute,
+        tracker=tracker,
+        agent_name="pesquisador",
         system_prompt=_pesq_system_prompt,
-        max_turns=20,
-        cap=pesq_cap,
         cap_exceeded_msg="Orçamento diário atingido. Volto amanhã.",
+        fallback_msg="Não consegui completar a pesquisa.",
+        max_turns=20,
         progress_map={
             "web_search": "Pesquisando na web...",
             "web_fetch": "Lendo artigo...",
@@ -300,8 +271,9 @@ async def run() -> None:
             "git_sync": "Publicando na wiki...",
         },
         result_max_chars=25000,
-        fallback_msg="Não consegui completar a pesquisa.",
     )
+    _pesq_handler_cfg = _pesq_runtime.handler_cfg
+    pesq_llm = _pesq_handler_cfg.llm
 
     # --- Bot handlers (one-liner closures over per-agent configs) ---
     async def _handle_ana_message(body: str, _prefix: str, progress=None) -> str:
