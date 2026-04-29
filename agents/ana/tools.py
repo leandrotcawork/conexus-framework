@@ -6,11 +6,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from core.memory.sqlite_store import SqliteStore
-from core.memory.wiki_store import WikiStore
+from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.wiki_store import WikiStore
 
 if TYPE_CHECKING:
-    from core.memory.google_calendar import GoogleCalendarClient
+    from conexus.core.memory.google_calendar import GoogleCalendarClient
 else:
     GoogleCalendarClient = Any
 

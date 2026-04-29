@@ -8,8 +8,8 @@ from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from agents.pesquisador.tools import PesquisadorTools
-from core.llm.context_tag import set_context
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.llm.context_tag import set_context
+from conexus.core.memory.sqlite_store import SqliteStore
 
 # LlmCallFn: async callable matching _llm_call signature in main.py
 LlmCallFn = Callable[..., Awaitable[str]]
@@ -202,7 +202,7 @@ def make_proactive_research_job(
                 )
 
             tools.wiki_write(target, improved)
-            tools.wiki.append_log("proactive", f"Improved {target}", f"Upgraded via proactive research")
+            tools.wiki.append_log("proactive", f"Improved {target}", "Upgraded via proactive research")
             tools.git_sync(f"proactive: improve {target}")
 
             return f"📖 Pesquisa proativa: artigo melhorado — {target}"

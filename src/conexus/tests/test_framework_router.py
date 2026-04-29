@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.llm.context_tag import current_context, set_context
-from core.llm.router import LLMConfig, TrackedLLM, build_llm
-from core.llm.usage_tracker import UsageTracker
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.llm.context_tag import current_context, set_context
+from conexus.core.llm.router import LLMConfig, build_llm
+from conexus.core.llm.usage_tracker import UsageTracker
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _make_tracker(tmp_db_path: Path) -> UsageTracker:
@@ -47,7 +47,7 @@ def test_complete_logs_usage(tmp_db_path):
     )
 
     mock_resp = _mock_resp("Bom dia, Leandro!")
-    with patch("litellm.completion", return_value=mock_resp) as mock_lit:
+    with patch("litellm.completion", return_value=mock_resp):
         with set_context("briefing"):
             result = llm.complete([{"role": "user", "content": "olá"}])
 

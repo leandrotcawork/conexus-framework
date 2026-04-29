@@ -1,12 +1,11 @@
 """Tests for PesquisadorTools wiki operations."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from agents.pesquisador.tools import PesquisadorTools
-from core.memory.wiki_store import WikiStore
+from conexus.core.memory.wiki_store import WikiStore
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Tests for skill_loader with dual-LLM and prefix support."""
 
 from pathlib import Path
-from core.config.skill_loader import parse_skill_file
+from conexus.core.config.skill_loader import parse_skill_file
 
 
 def test_parse_skill_with_synthesis_llm(tmp_path: Path):

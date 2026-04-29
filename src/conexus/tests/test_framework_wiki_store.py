@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from core.memory.wiki_store import WikiStore
+from conexus.core.memory.wiki_store import WikiStore
 
 
 def test_write_and_read(tmp_wiki_dir: Path):

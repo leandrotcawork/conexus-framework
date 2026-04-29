@@ -1,12 +1,11 @@
-import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 from freezegun import freeze_time
 
-from core.memory.sqlite_store import SqliteStore
-from core.scheduler.scheduler import ConexusScheduler, JobSpec, current_ref_id
+from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.scheduler.scheduler import ConexusScheduler, JobSpec, current_ref_id
 
 
 def _setup(tmp_db_path):

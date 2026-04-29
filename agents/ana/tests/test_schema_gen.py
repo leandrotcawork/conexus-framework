@@ -1,8 +1,7 @@
 """Snapshot-style tests for the schema auto-generator."""
-import pytest
 from agents.ana.tools import AnaTools
 from agents.pesquisador.tools import PesquisadorTools
-from core.tools.schema_gen import generate_tool_schemas
+from conexus.core.tools.schema_gen import generate_tool_schemas
 
 
 def _find(schemas, name):

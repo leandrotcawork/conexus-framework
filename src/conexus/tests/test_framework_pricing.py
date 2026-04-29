@@ -1,6 +1,6 @@
 import pytest
 
-from core.llm.pricing import PRICING, compute_cost, USD_TO_BRL
+from conexus.core.llm.pricing import PRICING, compute_cost, USD_TO_BRL
 
 
 def test_pricing_table_has_required_models():

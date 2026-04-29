@@ -5,13 +5,11 @@ external libraries."""
 
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
-from core.memory.wiki_store import WikiStore
+from conexus.core.memory.wiki_store import WikiStore
 
 
 @dataclass
@@ -202,7 +200,7 @@ class PesquisadorTools:
     async def compile_article(self, topic: str, raw_paths: list[str], target_path: str) -> dict:
         """Compile raw sources into a professional wiki article using R1 synthesis LLM.
         This is the ONLY tool that should create/update wiki articles from research."""
-        from core.llm.context_tag import set_context
+        from conexus.core.llm.context_tag import set_context
 
         if self.llm_synthesis is None:
             return {"error": "synthesis LLM not configured"}

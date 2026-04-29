@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from core.agent_registry import AgentRegistry
+from conexus.core.agent_registry import AgentRegistry
 
 
 class _FakeTools:

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core.llm.usage_tracker import UsageTracker
+from conexus.core.llm.usage_tracker import UsageTracker
 
 
 @dataclass

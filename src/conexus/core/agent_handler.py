@@ -14,10 +14,10 @@ from datetime import datetime
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from core.budget.cap_checker import BudgetCap, CapChecker
-from core.llm.context_tag import set_context
-from core.llm.router import TrackedLLM
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.budget.cap_checker import BudgetCap, CapChecker
+from conexus.core.llm.context_tag import set_context
+from conexus.core.llm.router import TrackedLLM
+from conexus.core.memory.sqlite_store import SqliteStore
 
 _BRT = ZoneInfo("America/Sao_Paulo")
 

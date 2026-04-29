@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from core.budget.cap_checker import BudgetCap, CapChecker
-from core.llm.usage_tracker import UsageTracker
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.budget.cap_checker import BudgetCap, CapChecker
+from conexus.core.llm.usage_tracker import UsageTracker
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _setup(tmp_db_path: Path):

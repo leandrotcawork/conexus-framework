@@ -12,8 +12,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from core.llm.context_tag import current_context
-from core.llm.usage_tracker import UsageTracker
+from conexus.core.llm.context_tag import current_context
+from conexus.core.llm.usage_tracker import UsageTracker
 
 _ASYNC_LLM_SEMAPHORE = asyncio.Semaphore(2)
 

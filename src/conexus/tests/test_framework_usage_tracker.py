@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from core.llm.usage_tracker import UsageTracker
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.llm.usage_tracker import UsageTracker
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _make(tmp_db_path: Path) -> UsageTracker:

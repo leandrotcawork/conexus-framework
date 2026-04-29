@@ -1,6 +1,6 @@
 """Tests for TelegramBot group/private chat logic."""
 
-from core.messaging.telegram_bot import TelegramBot
+from conexus.core.messaging.telegram_bot import TelegramBot
 
 
 def test_strip_mention():

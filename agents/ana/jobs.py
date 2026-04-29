@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Awaitable, Callable
 from zoneinfo import ZoneInfo
 
-from core.llm.context_tag import set_context
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.llm.context_tag import set_context
+from conexus.core.memory.sqlite_store import SqliteStore
 
 if TYPE_CHECKING:
     from agents.ana.tools import AnaTools
@@ -72,7 +72,7 @@ def make_briefing_job(
                 + "\n".join(f"- {e['start']}: {e['title']}" for e in events)
                 + f"\n\nTodos em aberto ({len(todos)}):\n"
                 + "\n".join(f"- {t['text']}" for t in todos)
-                + f"\n\nFatos conhecidos:\n"
+                + "\n\nFatos conhecidos:\n"
                 + "\n".join(f"- {f['key']}: {f['value']}" for f in facts)
             )
 

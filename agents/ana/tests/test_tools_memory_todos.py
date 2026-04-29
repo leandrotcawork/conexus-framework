@@ -1,12 +1,13 @@
 from unittest.mock import MagicMock
 
 from agents.ana.tools import AnaTools
-from core.memory.sqlite_store import SqliteStore
-from core.memory.wiki_store import WikiStore
+from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.wiki_store import WikiStore
 
 
 def _make(tmp_db_path, tmp_wiki_dir):
-    store = SqliteStore(tmp_db_path); store.init_db()
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
     wiki = WikiStore(tmp_wiki_dir, autocommit=False)
     return AnaTools(store=store, wiki=wiki, calendar=MagicMock())
 

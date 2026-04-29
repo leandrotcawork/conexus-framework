@@ -1,15 +1,14 @@
 """Tests for the unified agent message handler."""
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from core.agent_handler import AgentHandlerConfig, handle_agent_message
-from core.budget.cap_checker import BudgetCap, CapChecker
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.agent_handler import AgentHandlerConfig, handle_agent_message
+from conexus.core.budget.cap_checker import BudgetCap, CapChecker
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _mock_choice(content: str | None = None, tool_calls: list | None = None):

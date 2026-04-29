@@ -1,10 +1,8 @@
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def test_init_db_creates_all_tables(tmp_db_path: Path):

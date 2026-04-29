@@ -2,9 +2,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from agents.ana.tools import AnaTools
-from core.memory.google_calendar import GoogleCalendarClient
-from core.memory.sqlite_store import SqliteStore
-from core.memory.wiki_store import WikiStore
+from conexus.core.memory.google_calendar import GoogleCalendarClient
+from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.wiki_store import WikiStore
 
 
 def _make_tools(tmp_db_path: Path, tmp_wiki_dir: Path) -> AnaTools:
