@@ -45,6 +45,3 @@ data/
 wiki_deploy_key*
 wiki_deploy
 wiki_deploy.*
-
-# Local research wiki (second brain, not for deployment)
-docs/wiki/agents-framework/
