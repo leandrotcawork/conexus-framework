@@ -21,25 +21,30 @@ def _build_execute_tool(registry, agent_name: str):
     return execute_tool
 
 
-def _make_tools(agent_name: str, data_dir: Path):
-    from conexus.core.memory.sqlite_store import SqliteStore
-    from conexus.core.memory.wiki_store import WikiStore
+def _make_tools(agent_name: str, agents_dir: Path, data_dir: Path):
+    """Dynamically load tools from CONEXUS_AGENTS_DIR/<name>/tools.py.
 
-    store = SqliteStore(data_dir / "conexus.db")
+    Each agent's tools.py must export create_cli_tools(data_dir) -> (store, tools).
+    """
+    import importlib.util
 
-    if agent_name == "ana":
-        from agents.ana.tools import AnaTools
-        wiki = WikiStore(data_dir / "wiki", autocommit=False)
-        tools = AnaTools(store=store, wiki=wiki, calendar=None)
-        return store, tools
+    tools_path = agents_dir / agent_name / "tools.py"
+    if not tools_path.exists():
+        raise SystemExit(f"tools.py not found: {tools_path}")
 
-    if agent_name == "pesquisador":
-        from agents.pesquisador.tools import PesquisadorTools
-        wiki = WikiStore(data_dir / "knowledge", autocommit=False)
-        tools = PesquisadorTools(wiki=wiki, llm_synthesis=None)
-        return store, tools
+    spec = importlib.util.spec_from_file_location(f"_conexus_agent_{agent_name}_tools", tools_path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load tools module from {tools_path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
 
-    raise SystemExit(f"Unknown agent '{agent_name}'. Supported: ana, pesquisador")
+    if not hasattr(mod, "create_cli_tools"):
+        raise SystemExit(
+            f"tools.py for agent '{agent_name}' must export create_cli_tools(data_dir) -> (store, tools). "
+            f"See agents/ana/tools.py for an example."
+        )
+
+    return mod.create_cli_tools(data_dir)
 
 
 async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
@@ -54,7 +59,7 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
         raise SystemExit(f"SKILL.md not found: {skill_path}")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    store, tools = _make_tools(agent_name, data_dir)
+    store, tools = _make_tools(agent_name, agents_dir, data_dir)
 
     registry = AgentRegistry()
     registry.register(agent_name, tools)

@@ -153,3 +153,13 @@ AnaTools._tool_schemas = {
     "wiki_append_log": {"description": "Faz append em log.md da wiki."},
     "wiki_update_index": {"description": "Atualiza index.md da wiki."},
 }
+
+
+def create_cli_tools(data_dir: str) -> "tuple[SqliteStore, AnaTools]":
+    """Factory for CLI use — no calendar, no autocommit wiki."""
+    from pathlib import Path as _Path
+    from conexus.core.memory.wiki_store import WikiStore
+    store = SqliteStore(_Path(data_dir) / "conexus.db")
+    store.init_db()
+    wiki = WikiStore(_Path(data_dir) / "wiki", autocommit=False)
+    return store, AnaTools(store=store, wiki=wiki, calendar=None)

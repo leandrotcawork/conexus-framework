@@ -358,3 +358,14 @@ PesquisadorTools._tool_schemas = {
         "params": {"message": {"description": "Mensagem do commit"}}
     },
 }
+
+
+def create_cli_tools(data_dir: str) -> "tuple":
+    """Factory for CLI use — no llm_synthesis."""
+    from pathlib import Path as _Path
+    from conexus.core.memory.sqlite_store import SqliteStore
+    from conexus.core.memory.wiki_store import WikiStore
+    store = SqliteStore(_Path(data_dir) / "conexus.db")
+    store.init_db()
+    wiki = WikiStore(_Path(data_dir) / "knowledge", autocommit=False)
+    return store, PesquisadorTools(wiki=wiki, llm_synthesis=None)
