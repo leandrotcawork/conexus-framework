@@ -1,5 +1,6 @@
-# Claude Code local settings
-.claude/
+# Claude Code local settings — track agents/, ignore the rest
+.claude/*
+!.claude/agents/
 
 # Python
 __pycache__/
@@ -44,3 +45,6 @@ data/
 wiki_deploy_key*
 wiki_deploy
 wiki_deploy.*
+
+# Local research wiki (second brain, not for deployment)
+docs/wiki/agents-framework/
