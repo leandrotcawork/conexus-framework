@@ -1,0 +1,33 @@
+{
+  "project": "Conexus",
+  "current_phase_id": "phase-6",
+  "summary": {
+    "total_phases": 2,
+    "completed_phases": 1,
+    "total_tasks": 9,
+    "completed_tasks": 9
+  },
+  "phases": [
+    {
+      "id": "workflow-infra",
+      "name": "V2 Execution Workflow Infrastructure",
+      "status": "completed",
+      "completed_at": "2026-04-29T00:00:00-03:00",
+      "plan": "docs/superpowers/plans/2026-04-29-v2-execution-workflow.md"
+    },
+    {
+      "id": "phase-6",
+      "name": "Phase 6 — Framework / Consumer Split",
+      "status": "not_started",
+      "plan": "docs/superpowers/plans/2026-04-29-framework-consumer-split-migration.md",
+      "subtasks": [
+        { "id": "6.1", "name": "Repo prep (pyproject skeletons, src/conexus/ stub)", "done": false },
+        { "id": "6.2", "name": "Move core/ → src/conexus/core/", "done": false },
+        { "id": "6.3", "name": "Carve agent code out of main.py", "done": false },
+        { "id": "6.4", "name": "Split pyproject.toml", "done": false },
+        { "id": "6.5", "name": "conexus CLI entry point", "done": false },
+        { "id": "6.6", "name": "Tag tests + dogfood install", "done": false }
+      ]
+    }
+  ]
+}
