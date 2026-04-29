@@ -9,8 +9,6 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
-
 from dotenv import load_dotenv
 
 from agents.ana.jobs import (
@@ -27,9 +25,9 @@ from agents.pesquisador.jobs import (
     make_wiki_audit_job,
 )
 from agents.pesquisador.tools import PesquisadorTools
-from conexus.core.agent_handler import handle_agent_message
+from conexus.core.agent_handler import AgentHandlerConfig, handle_agent_message
 from conexus.core.agent_registry import AgentRegistry
-from conexus.core.budget.cap_checker import CapChecker
+from conexus.core.budget.cap_checker import BudgetCap, CapChecker
 from conexus.core.llm.router import LLMConfig, build_llm
 from conexus.core.llm.usage_tracker import UsageTracker
 from conexus.core.memory.google_calendar import GoogleCalendarClient
@@ -39,9 +37,6 @@ from conexus.core.messaging.telegram_bot import TelegramBot
 from conexus.core.config.skill_loader import parse_skill_file
 from conexus.core.scheduler.scheduler import ConexusScheduler, JobSpec
 from conexus.core.tools.schema_gen import generate_tool_schemas as _gen_schemas
-
-
-_BRT = ZoneInfo("America/Sao_Paulo")
 
 
 def _install_ssh_key(key_content: str, filename: str) -> Path:
@@ -195,7 +190,6 @@ async def run() -> None:
         wiki=wiki,
         calendar=GoogleCalendarClient(),
     )
-    from conexus.core.budget.cap_checker import BudgetCap
     ana_cap = BudgetCap(
         daily_usd=ana_skill.frontmatter.budget.daily_usd,
         monthly_usd=ana_skill.frontmatter.budget.monthly_usd,
@@ -245,8 +239,6 @@ async def run() -> None:
         return await registry.execute_tool("pesquisador", name, args)
 
     # --- Per-agent handler configs ---
-    from conexus.core.agent_handler import AgentHandlerConfig
-
     _ana_system_prompt = (
         f"{ana_skill.frontmatter.goal}\n\n"
         f"{ana_skill.body}\n\n"

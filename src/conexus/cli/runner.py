@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Awaitable
 
 from conexus.core.agent_handler import AgentHandlerConfig
-from conexus.core.budget.cap_checker import BudgetCap, CapChecker
+from conexus.core.budget.cap_checker import BudgetCap
 from conexus.core.config.skill_loader import parse_skill_file
 from conexus.core.llm.router import LLMConfig, build_llm
 from conexus.core.llm.usage_tracker import UsageTracker
@@ -19,6 +19,8 @@ class AgentRuntime:
     tools_schema: list[dict]
 
 
+# Scaffolding for Phase 6.5 CLI entry point — not yet called by telegram_runner.py.
+# telegram_runner.py still uses direct construction for now.
 def build_runtime(
     skill_path: str,
     *,
