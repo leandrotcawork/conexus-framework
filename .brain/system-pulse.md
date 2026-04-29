@@ -2,10 +2,10 @@
 > Auto-updated: 2026-04-29
 
 ## Current Phase
-**Phase 6 complete.** Framework/consumer split done. Ready for Phase 7 (Skills/Team primitives).
+**Phase 7 planned.** SKILL_PACK + TrifectaGuard + BudgetCap — not yet started.
 - Phases 0-5 = kernel work; Phase 6 = framework/consumer split (DONE); Phases 7-9 = v2 net-new
-- Phase 7 not yet planned — needs nexus:nexus-plan session
-- Before Phase 7: 3 Opus cleanup items (see session-log § What's Immediately Next)
+- Phase 7 subtasks: 7.1 skills: field → 7.2 SkillLoader → 7.3 backend abstraction → 7.4 TrifectaGuard → 7.5 tag CLI → 7.6 integration tests
+- Pre-phase: write implementation plan (`nexus:writing-plans` + spec §1.3, §1.4, §1.8)
 
 ## Recent Changes
 - 2026-04-29: Phase 6 complete (6 sub-phases, ~15 commits): framework/consumer split, src/conexus/core/, adapters/, CLI entry, dep split, test reorganization, dogfood
