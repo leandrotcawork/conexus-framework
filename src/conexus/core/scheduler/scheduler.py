@@ -7,14 +7,14 @@ runs any catchable jobs whose expected ref_id is missing from ping_log.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timezone
+from datetime import datetime
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 JobFn = Callable[[], Awaitable[None]]

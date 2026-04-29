@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
 
-from core.llm.pricing import compute_cost
-from core.memory.sqlite_store import SqliteStore
+from conexus.core.llm.pricing import compute_cost
+from conexus.core.memory.sqlite_store import SqliteStore
 
 
 class UsageTracker:

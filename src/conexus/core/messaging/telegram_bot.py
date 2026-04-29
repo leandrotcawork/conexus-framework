@@ -212,7 +212,8 @@ class TelegramBot:
             await update.message.reply_text("So aceito PDFs por enquanto.")
             return
         await update.message.reply_text("📄 Recebi o PDF, processando...")
-        import tempfile, os
+        import tempfile
+        import os
         tmp_path = None
         try:
             tg_file = await doc.get_file()
