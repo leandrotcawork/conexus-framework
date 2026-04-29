@@ -2,23 +2,26 @@
 > Auto-updated: 2026-04-29
 
 ## Current Phase
-**Workflow infrastructure complete.** Ready for Phase 6 (framework/consumer split).
-- Phases 0-5 = kernel work (target arch); Phases 6-9 = v2 net-new
-- Workflow loop to use for Phase 6: `docs/dev-workflow/02-execution-loop.md`
-- Migration plan: `docs/superpowers/plans/2026-04-29-framework-consumer-split-migration.md`
+**Phase 6 complete.** Framework/consumer split done. Ready for Phase 7 (Skills/Team primitives).
+- Phases 0-5 = kernel work; Phase 6 = framework/consumer split (DONE); Phases 7-9 = v2 net-new
+- Phase 7 not yet planned — needs nexus:nexus-plan session
+- Before Phase 7: 3 Opus cleanup items (see session-log § What's Immediately Next)
 
 ## Recent Changes
+- 2026-04-29: Phase 6 complete (6 sub-phases, ~15 commits): framework/consumer split, src/conexus/core/, adapters/, CLI entry, dep split, test reorganization, dogfood
 - 2026-04-29: Added full dev-workflow infrastructure (9 commits): wiki-keeper subagent, 5 policy docs, CLAUDE.md wiring, wiki partition 14 cross-ref
 - (prior sessions not yet recorded)
 
 ## Architecture Overview
 ```
 Conexus = Ana + Pesquisador on Fly.io (gru) + Telegram
-main.py → agents/{ana,pesquisador}/ → core/ (kernel)
-core/agent_handler.py = single tool-calling loop
-core/agent_registry.py = uniform tool dispatch
+main.py (shim) → adapters/telegram_runner.py → agents/{ana,pesquisador}/
+src/conexus/core/ = framework kernel (agent_handler, agent_registry, llm, memory, scheduler)
+src/conexus/cli/ = CLI entry point + build_runtime primitive
+adapters/ = consumer wiring (Telegram, SSH, wiki clone)
 SQLite @ /data/conexus.db, wiki @ /data/wiki/ (git-backed, SSH key)
 Two Telegram bots in one process; APScheduler for jobs
+conexus pip wheel = src/conexus/ only (framework deps subset)
 ```
 
 ## Established Patterns
@@ -29,19 +32,24 @@ Two Telegram bots in one process; APScheduler for jobs
 - All policy: `docs/dev-workflow/` — read once per session
 
 ## Known Risks and Tech Debt
-- `codex:codex-rescue` subagent availability unverified in production (smoke test deferred to Phase 6 kickoff)
+- `codex:codex-rescue` sandbox blocks file reads in this env — direct audit needed for Phase 7 pre-validation
+- `src/conexus/cli/__main__.py` imports consumer code (agents.ana.tools, agents.pesquisador.tools) — violates framework purity; fix before Phase 7
+- `adapters/telegram_runner.py` still constructs AgentHandlerConfig directly (build_runtime not yet wired in) — duplicate construction path
 - `docs/wiki/agents-framework/` commit strategy TBD (local-only vs. tracked)
-- CLAUDE.md was carrying unstaged changes for an unknown period — now committed
 
 ## Key File Locations
-- Kernel loop: `core/agent_handler.py`
-- Agent registry: `core/agent_registry.py`
+- Kernel loop: `src/conexus/core/agent_handler.py`
+- Agent registry: `src/conexus/core/agent_registry.py`
+- Framework runtime builder: `src/conexus/cli/runner.py`
+- CLI entry point: `src/conexus/cli/__main__.py`
+- Consumer wiring: `adapters/telegram_runner.py`
+- Boot shim: `main.py`
+- Framework tests: `src/conexus/tests/test_framework_*.py`
+- Agent tests: `agents/{ana,pesquisador}/tests/`
 - Dev workflow: `docs/dev-workflow/` (5 policy docs + README)
 - Wiki-keeper subagent: `.claude/agents/wiki-keeper.md`
 - V2 spec: `docs/superpowers/specs/2026-04-29-conexus-framework-v2.md`
 - Migration plan: `docs/superpowers/plans/2026-04-29-framework-consumer-split-migration.md`
-- Target arch wiki: `docs/wiki/agents-framework/14-conexus-target-architecture.md`
-- Execution workflow plan: `docs/superpowers/plans/2026-04-29-v2-execution-workflow.md`
 
 ## Active Decisions
 - ADR-001: wiki-keeper scope locked to `docs/wiki/agents-framework/` — see `.brain/decisions/001-wiki-keeper-scope.md`

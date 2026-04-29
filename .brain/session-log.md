@@ -1,32 +1,40 @@
 # Last Session — Conexus
-> Date: 2026-04-29 | Session: #1
+> Date: 2026-04-29 | Session: #2
 
 ## What Was Accomplished
-- Created `.claude/agents/wiki-keeper.md` — custom subagent for docs drift detection (scope: docs/wiki/agents-framework/)
-- Created `docs/dev-workflow/` with 5 policy docs: model routing, execution loop, codex validation, parallel dispatch, quality gates
-- Added `## 5. Dev Workflow` reference section to `CLAUDE.md`
-- Fixed `.gitignore` to allow tracking `.claude/agents/` while blocking rest of `.claude/`
-- Smoke-tested wiki-keeper: scope-guard confirmed (refused out-of-scope write), real-scope test produced accurate v2 spec cross-ref
-- Updated `docs/wiki/agents-framework/14-conexus-target-architecture.md` with v2 spec cross-reference and Phase 0-5 scope qualifier
-- Opus end-of-plan review: APPROVED (no blocking issues)
+- Patched migration plan with 4 pre-validation micro-decisions before execution
+- Phase 6.1: src/conexus/ stub + pyproject skeletons (framework + agents)
+- Phase 6.2: git mv core/ → src/conexus/core/, rewrote ~30 files to conexus.core.*, editable install
+- Phase 6.3: Carved main.py → adapters/telegram_runner.py + src/conexus/cli/runner.py; main.py = 12-line shim
+- Phase 6.4: Split pyproject deps — framework in [project.dependencies], consumer in [dependency-groups].consumer; wheel builds clean
+- Phase 6.5: conexus CLI — `conexus run agent <name>` stdin loop, CONEXUS_AGENTS_DIR env var
+- Phase 6.6: Tests reorganized — framework → src/conexus/tests/test_framework_*.py; agents → agents/*/tests/; dogfood 46 passed
+- Opus review: APPROVED_WITH_NOTES (74 tests, ruff clean, wheel builds)
 
 ## What Changed in the System
-- New dir: `.claude/agents/` (now tracked in git via `!.claude/agents/` negation in .gitignore)
-- New dir: `docs/dev-workflow/` with 6 files (README + 5 policy docs)
-- CLAUDE.md behavioral guidelines now in git (was unstaged); section 5 added
-- `docs/wiki/agents-framework/14-conexus-target-architecture.md` now tracked in git (first commit)
+- `core/` removed — now at `src/conexus/core/`
+- `main.py` is a thin shim; all consumer wiring in `adapters/telegram_runner.py`
+- New: `src/conexus/cli/runner.py` (build_runtime framework primitive)
+- New: `src/conexus/cli/__main__.py` (conexus CLI entry point)
+- New: `adapters/` dir with telegram_runner.py
+- pyproject.toml: [project.scripts], [build-system], [dependency-groups].consumer added
+- Tests split: 12 framework tests in src/conexus/tests/, 6 agent tests in agents/*/tests/
 
 ## Decisions Made This Session
-- Use monorepo `.claude/agents/` for custom subagents (vs. separate plugin install)
-- wiki-keeper scope locked to `docs/wiki/agents-framework/` only — keeps blast radius minimal
-- `docs/wiki/agents-framework/` must remain unignored so wiki-keeper's `git diff` output works
+- adapters/ at repo root (not nested) — recorded in migration plan
+- APScheduler stays in framework (core scheduler imports it directly)
+- CLI agent dir via CONEXUS_AGENTS_DIR env var, default ./agents
+- Phase 6.2: editable install immediately after git mv
 
 ## What's Immediately Next
-- Phase 6 of Conexus target architecture: framework/consumer split
-  - Phase 6.1: repo prep (pyproject skeletons, src/conexus/ dir stub)
-  - Run codex pre-validation on `docs/superpowers/plans/2026-04-29-framework-consumer-split-migration.md` first
-  - Reference: `docs/dev-workflow/02-execution-loop.md` for the full loop to follow
+- Phase 7 (Skills/Team primitives) — not in roadmap yet; need nexus:nexus-plan
+- Before Phase 7: address Opus recommendations:
+  1. Wire build_runtime into telegram_runner.py (kills duplicate construction path)
+  2. Fix cli/__main__.py hardcoded agent imports (use CONEXUS_AGENTS_DIR discovery)
+  3. Run full dogfood: pip install wheel in clean venv + run agents/*/tests/
+- Run wiki-keeper (Phase 6 changed framework architecture significantly)
 
 ## Open Questions
-- Is `codex:codex-rescue` available as a subagent_type in this environment? (Verified yes in this session, but first real pre-phase validation will confirm)
-- Should `docs/wiki/agents-framework/` files be committed going forward or kept local-only?
+- When does Phase 7 start? Need planning session to define subtasks
+- Should cli/__main__.py move to adapters/ since it imports consumer code? (Opus flagged)
+- codex:codex-rescue sandboxed in this env — Phase 7 pre-validation will need direct audit again
