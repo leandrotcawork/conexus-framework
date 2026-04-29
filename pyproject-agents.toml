@@ -6,8 +6,13 @@ version = "0.1.0"
 description = "Conexus consumer — Ana, Pesquisador agents"
 requires-python = ">=3.11"
 dependencies = [
-  "conexus",  # framework package — filled in Phase 6.4
-  # Filled in Phase 6.4 — consumer deps (python-telegram-bot, google-api-python-client, etc.)
+  "conexus",
+  "python-telegram-bot>=21.0",
+  "ddgs>=0.1",
+  "httpx>=0.27",
+  "youtube-transcript-api>=1.0",
+  "pypdfium2>=4.0",
+  "google-auth-oauthlib>=1.2",
 ]
 
 [build-system]
