@@ -11,9 +11,10 @@ from pathlib import Path
 
 
 class WikiStore:
-    def __init__(self, root: str | Path, *, autocommit: bool = True):
+    def __init__(self, root: str | Path, *, autocommit: bool = True, ssh_cmd: str | None = None):
         self.root = Path(root).resolve()
         self.autocommit = autocommit
+        self._ssh_cmd = ssh_cmd  # overrides GIT_SSH_COMMAND for push/commit ops
         self.root.mkdir(parents=True, exist_ok=True)
 
     # ----- path safety -----
@@ -106,13 +107,20 @@ class WikiStore:
 
     def _git_commit_push(self, message: str) -> None:
         """Fire-and-forget git add/commit/push. Silent on failure (logged to stderr)."""
+        import os
         import subprocess
         import sys
+
+        if not (self.root / ".git").exists():
+            return  # no git repo — wiki writes still persist on the volume
+
+        env = ({**os.environ, "GIT_SSH_COMMAND": self._ssh_cmd}
+               if self._ssh_cmd else None)
 
         try:
             subprocess.run(
                 ["git", "-C", str(self.root), "add", "-A"],
-                check=True, capture_output=True, text=True, timeout=10,
+                check=True, capture_output=True, text=True, timeout=10, env=env,
             )
             result = subprocess.run(
                 [
@@ -121,26 +129,58 @@ class WikiStore:
                     "-c", "user.name=Isaac (Conexus)",
                     "commit", "-m", message,
                 ],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=10, env=env,
             )
             if result.returncode != 0 and "nothing to commit" not in result.stdout:
                 print(f"[wiki] commit failed: {result.stdout} {result.stderr}", file=sys.stderr)
                 return
             branch_result = subprocess.run(
                 ["git", "-C", str(self.root), "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=5, env=env,
             )
-            branch = branch_result.stdout.strip() or "main"
+            current_branch = branch_result.stdout.strip()
+            # Detached HEAD (rev-parse returns "HEAD") or empty — reattach to main.
+            if not current_branch or current_branch == "HEAD":
+                try:
+                    default_result = subprocess.run(
+                        ["git", "-C", str(self.root), "symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
+                        check=True, capture_output=True, text=True, timeout=5, env=env,
+                    )
+                    detected_branch = default_result.stdout.strip().removeprefix("origin/")
+                    subprocess.run(
+                        ["git", "-C", str(self.root), "checkout", detected_branch],
+                        check=True, capture_output=True, text=True, timeout=10, env=env,
+                    )
+                    branch = detected_branch
+                except subprocess.CalledProcessError as e:
+                    print(f"[wiki] branch checkout failed: {e}", file=sys.stderr)
+                    return
+            else:
+                branch = current_branch
             # Skip push if no remote is configured (e.g. local-only wiki in dev)
             remote_check = subprocess.run(
                 ["git", "-C", str(self.root), "remote", "get-url", "origin"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=5, env=env,
             )
             if remote_check.returncode != 0:
                 return
+            # Pull remote changes before pushing to avoid "fetch first" rejections.
+            pull = subprocess.run(
+                ["git", "-C", str(self.root), "pull", "--rebase", "origin", branch],
+                capture_output=True, text=True, timeout=30, env=env,
+            )
+            if pull.returncode != 0:
+                # Rebase conflict — abort so the repo isn't left mid-rebase.
+                subprocess.run(
+                    ["git", "-C", str(self.root), "rebase", "--abort"],
+                    capture_output=True, text=True, timeout=10, env=env,
+                )
+                print(f"[wiki] pull/rebase failed; aborted. stderr: {pull.stderr[:300]}",
+                      file=sys.stderr)
+                return
             push = subprocess.run(
                 ["git", "-C", str(self.root), "push", "origin", branch],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, env=env,
             )
             if push.returncode != 0:
                 print(f"[wiki] push failed (rc={push.returncode}): {push.stderr[:300]}", file=sys.stderr)
