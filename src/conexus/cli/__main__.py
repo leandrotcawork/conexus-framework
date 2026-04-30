@@ -99,6 +99,50 @@ def _handle_run_agent(args: argparse.Namespace) -> None:
     asyncio.run(_run_loop(args.name, agents_dir, data_dir))
 
 
+def _handle_tag_suggest(args: argparse.Namespace) -> None:
+    """Print auto-tag suggestions for every public method in a tools.py."""
+    import importlib.util as _ilu
+    from conexus.core.trifecta.tags import auto_tag
+
+    path = Path(args.tools_file)
+    if not path.exists():
+        raise SystemExit(f"File not found: {path}")
+
+    spec = _ilu.spec_from_file_location("_tag_target", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load {path}")
+    import sys as _sys
+    mod = _ilu.module_from_spec(spec)
+    _sys.modules[spec.name] = mod
+    try:
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    except Exception as exc:
+        del _sys.modules[spec.name]
+        raise SystemExit(f"Error loading {path}: {exc}") from exc
+
+    classes = [(n, v) for n, v in vars(mod).items() if isinstance(v, type) and not n.startswith("_")]
+    if not classes:
+        print("# No classes found.")
+        return
+
+    print("# Suggested data_classes: (review before committing)")
+    print("data_classes:")
+    untagged: list[str] = []
+    for cls_name, cls in classes:
+        methods = [m for m in dir(cls) if not m.startswith("_") and callable(getattr(cls, m))]
+        for method in methods:
+            tag = auto_tag(method)
+            if tag:
+                print(f"  {method}: {tag.value}")
+            else:
+                untagged.append(method)
+
+    if untagged:
+        print("# --- Untagged (manual review required) ---")
+        for m in untagged:
+            print(f"  {m}: ???  # add to SKILL_PACK.md data_classes")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="conexus",
@@ -112,6 +156,12 @@ def main() -> None:
     agent_cmd = run_sub.add_parser("agent", help="Start an agent stdin loop")
     agent_cmd.add_argument("name", help="Agent name (e.g. ana, pesquisador)")
     agent_cmd.set_defaults(func=_handle_run_agent)
+
+    tag_cmd = sub.add_parser("tag", help="Tag analysis utilities")
+    tag_sub = tag_cmd.add_subparsers(dest="subcommand")
+    suggest_cmd = tag_sub.add_parser("suggest", help="Print suggested data_classes for a tools.py")
+    suggest_cmd.add_argument("tools_file", help="Path to a tools.py file")
+    suggest_cmd.set_defaults(func=_handle_tag_suggest)
 
     args = parser.parse_args()
 
