@@ -1,60 +1,39 @@
-"""Agent registry — central store of live agent instances.
-
-Agents register their tools instance here. The registry provides unified
-tool dispatch so agent handlers don't need separate execute_tool closures.
-
-Usage::
-
-    registry = AgentRegistry()
-    registry.register("ana", ana_tools)
-    registry.register("pesquisador", pesq_tools)
-
-    # In a handler:
-    result = await registry.execute_tool("ana", "calendar_list_events", {...})
-"""
-
+"""Agent registry — routes tool calls to the registered backend per agent."""
 from __future__ import annotations
-
-import inspect
 import json
-import traceback
 from typing import Any
+from conexus.core.backends.base import ToolBackend
+from conexus.core.backends.python_backend import PythonBackend
 
 
 class AgentRegistry:
-    """Holds the live tools instance for every registered agent."""
+    """Maps agent names to their ToolBackend."""
 
     def __init__(self) -> None:
-        self._tools: dict[str, Any] = {}
+        self._backends: dict[str, ToolBackend] = {}
 
     def register(self, agent_name: str, tools: Any) -> None:
-        """Register a tools instance under *agent_name*."""
-        self._tools[agent_name] = tools
+        """Register a Python tools object. Wraps it in PythonBackend."""
+        self._backends[agent_name] = PythonBackend(tools)
+
+    def register_backend(self, agent_name: str, backend: ToolBackend) -> None:
+        """Register any backend directly."""
+        self._backends[agent_name] = backend
 
     def get_tools(self, agent_name: str) -> Any:
-        """Return the tools instance; raises KeyError if not registered."""
-        return self._tools[agent_name]
+        """Backward-compat: return underlying tools object for PythonBackend."""
+        backend = self._backends.get(agent_name)
+        if backend is None:
+            raise KeyError(agent_name)
+        if isinstance(backend, PythonBackend):
+            return backend._tools
+        raise TypeError(f"backend for {agent_name!r} is not a PythonBackend")
 
     def agent_names(self) -> list[str]:
-        return list(self._tools.keys())
+        return list(self._backends.keys())
 
     async def execute_tool(self, agent_name: str, tool_name: str, args: dict) -> str:
-        """Dispatch *tool_name* on the tools instance for *agent_name*.
-
-        Returns a JSON string (success or ``{"error": ...}``).
-        Handles both sync and async tool methods.
-        """
-        tools = self._tools.get(agent_name)
-        if tools is None:
+        backend = self._backends.get(agent_name)
+        if backend is None:
             return json.dumps({"error": f"agente desconhecido: {agent_name}"})
-
-        fn = getattr(tools, tool_name, None)
-        if fn is None:
-            return json.dumps({"error": f"ferramenta desconhecida: {tool_name}"})
-
-        try:
-            result = await fn(**args) if inspect.iscoroutinefunction(fn) else fn(**args)
-            return json.dumps(result, ensure_ascii=False, default=str)
-        except Exception as exc:
-            traceback.print_exc()
-            return json.dumps({"error": str(exc)})
+        return await backend.execute(tool_name, args)
