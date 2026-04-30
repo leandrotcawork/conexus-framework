@@ -43,6 +43,7 @@ class SkillFrontmatter(BaseModel):
     llm_synthesis: LLMSection | None = None
     schedules: list[Schedule] = Field(default_factory=list)
     budget: Optional[BudgetSection] = None
+    skills: list[str] = Field(default_factory=list)
 
 
 class SkillDocument(BaseModel):
