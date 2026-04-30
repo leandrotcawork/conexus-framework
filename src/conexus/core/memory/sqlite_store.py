@@ -78,10 +78,12 @@ class SqliteStore:
         self.db_path = Path(db_path)
 
     def init_db(self) -> None:
+        from conexus.core.memory.handoff_audit import init_handoff_audit
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             conn.executescript(SCHEMA)
             conn.commit()
+            init_handoff_audit(conn)
 
     @contextmanager
     def connect(self):
