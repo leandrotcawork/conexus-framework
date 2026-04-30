@@ -22,6 +22,13 @@ class PythonBackend(ToolBackend):
             traceback.print_exc()
             return json.dumps({"error": str(exc)})
 
+    def list_tools(self) -> list[str]:
+        """Public callable methods on the underlying tools object."""
+        return [
+            n for n in dir(self._tools)
+            if not n.startswith("_") and callable(getattr(self._tools, n))
+        ]
+
     @property
     def backend_type(self) -> str:
         return "python"

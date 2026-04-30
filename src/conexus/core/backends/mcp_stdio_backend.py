@@ -15,6 +15,7 @@ class McpStdioBackend(ToolBackend):
         self._proc: asyncio.subprocess.Process | None = None
         self._id = 0
         self._initialized = False
+        self._tool_names: list[str] = []
 
     async def start(self) -> None:
         self._proc = await asyncio.create_subprocess_exec(
@@ -29,6 +30,8 @@ class McpStdioBackend(ToolBackend):
             "capabilities": {},
             "clientInfo": {"name": "conexus", "version": "0.1.0"},
         })
+        tools_result = await self._call("tools/list", {})
+        self._tool_names = [t["name"] for t in (tools_result.get("tools") or [])]
         self._initialized = True
 
     async def stop(self) -> None:
@@ -60,6 +63,9 @@ class McpStdioBackend(ToolBackend):
             return json.dumps("\n".join(text_parts) if len(text_parts) != 1 else text_parts[0])
         except Exception as exc:
             return json.dumps({"error": str(exc)})
+
+    def list_tools(self) -> list[str]:
+        return list(self._tool_names)
 
     @property
     def backend_type(self) -> str:

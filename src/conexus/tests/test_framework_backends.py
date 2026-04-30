@@ -75,3 +75,39 @@ async def test_mcp_stdio_backend(tmp_path):
         assert data == "hello"
     finally:
         await backend.stop()
+
+
+class _ToolsA:
+    def alpha(self) -> str: return "A"
+
+class _ToolsB:
+    def beta(self) -> str: return "B"
+
+def test_python_backend_lists_tools():
+    b = PythonBackend(_ToolsA())
+    assert "alpha" in b.list_tools()
+
+@pytest.mark.asyncio
+async def test_registry_multi_backend_routes_by_tool_name():
+    registry = AgentRegistry()
+    registry.register_backend("bot", PythonBackend(_ToolsA()))
+    registry.register_backend("bot", PythonBackend(_ToolsB()))
+    a = await registry.execute_tool("bot", "alpha", {})
+    b = await registry.execute_tool("bot", "beta", {})
+    assert '"A"' in a
+    assert '"B"' in b
+
+@pytest.mark.asyncio
+async def test_registry_multi_backend_collision_raises():
+    registry = AgentRegistry()
+    registry.register_backend("bot", PythonBackend(_ToolsA()))
+    registry.register_backend("bot", PythonBackend(_ToolsA()))
+    result = await registry.execute_tool("bot", "alpha", {})
+    assert "tool collision" in result.lower()
+
+@pytest.mark.asyncio
+async def test_registry_unknown_tool_returns_error():
+    registry = AgentRegistry()
+    registry.register_backend("bot", PythonBackend(_ToolsA()))
+    result = await registry.execute_tool("bot", "nonexistent", {})
+    assert "tool desconhecida" in result.lower() or "unknown tool" in result.lower()
