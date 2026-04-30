@@ -58,3 +58,50 @@ def test_skill_frontmatter_skills_optional(tmp_path):
     (tmp_path / "SKILL.md").write_text(no_skills)
     doc = parse_skill_file(tmp_path / "SKILL.md")
     assert doc.frontmatter.skills == []
+
+
+import json
+from conexus.core.skills.skill_resolver import SkillLoader
+from conexus.core.agent_registry import AgentRegistry
+
+PACK_TOOLS = """
+class WikiSkillTools:
+    def wiki_search(self, query: str) -> list:
+        return [{"result": query}]
+    def wiki_read(self, path: str) -> str:
+        return f"content of {path}"
+"""
+
+def _make_wiki_pack(tmp_path):
+    pack_dir = tmp_path / "skills" / "wiki"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "SKILL_PACK.md").write_text(
+        "---\nname: wiki\nversion: 1.0.0\nbackend: python\ncapabilities: [wiki_search, wiki_read]\n"
+        "data_classes:\n  wiki_search: private_read\n  wiki_read: private_read\n---\nWiki fragment.\n"
+    )
+    (pack_dir / "tools.py").write_text(PACK_TOOLS)
+    return pack_dir
+
+def test_skill_loader_loads_pack(tmp_path):
+    _make_wiki_pack(tmp_path)
+    registry = AgentRegistry()
+    loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
+    extra_prompt, tool_tags = loader.load(["wiki@1.0.0"])
+    assert "Wiki fragment." in extra_prompt
+    assert "wiki_search" in tool_tags
+    assert tool_tags["wiki_search"] == "private_read"
+
+@pytest.mark.asyncio
+async def test_skill_loader_registers_tools(tmp_path):
+    _make_wiki_pack(tmp_path)
+    registry = AgentRegistry()
+    loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
+    loader.load(["wiki@1.0.0"])
+    result = await registry.execute_tool("bot", "wiki_search", {"query": "hello"})
+    assert json.loads(result) == [{"result": "hello"}]
+
+def test_skill_loader_missing_pack_raises(tmp_path):
+    registry = AgentRegistry()
+    loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
+    with pytest.raises(FileNotFoundError, match="SKILL_PACK.md"):
+        loader.load(["missing@0.1.0"])
