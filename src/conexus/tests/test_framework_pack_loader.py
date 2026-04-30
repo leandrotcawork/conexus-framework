@@ -104,3 +104,74 @@ def test_skill_loader_missing_pack_raises(tmp_path):
     loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
     with pytest.raises(FileNotFoundError, match="SKILL_PACK.md"):
         loader.load(["missing@0.1.0"])
+
+
+PACK_TOOLS_WITH_IMPORT = """
+from collections import OrderedDict
+
+class WikiSkillTools:
+    def wiki_search(self, query: str) -> list:
+        return [{"result": query}]
+"""
+
+@pytest.mark.asyncio
+async def test_skill_loader_ignores_imported_classes(tmp_path):
+    pack_dir = tmp_path / "skills" / "wiki"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "SKILL_PACK.md").write_text(
+        "---\nname: wiki\nversion: 1.0.0\nbackend: python\ncapabilities: [wiki_search]\n"
+        "data_classes:\n  wiki_search: private_read\n---\nWiki.\n"
+    )
+    (pack_dir / "tools.py").write_text(PACK_TOOLS_WITH_IMPORT)
+    registry = AgentRegistry()
+    loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
+    loader.load(["wiki@1.0.0"])
+    result = await registry.execute_tool("bot", "wiki_search", {"query": "x"})
+    assert json.loads(result) == [{"result": "x"}]
+
+
+@pytest.mark.asyncio
+async def test_skill_loader_lifecycle_no_mcp(tmp_path):
+    """start_all/stop_all must be safe when no mcp backends loaded."""
+    _make_wiki_pack(tmp_path)
+    registry = AgentRegistry()
+    loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
+    loader.load(["wiki@1.0.0"])
+    await loader.start_all()
+    await loader.stop_all()
+
+
+@pytest.mark.asyncio
+async def test_skill_loader_lifecycle_starts_mcp(tmp_path):
+    import sys
+    pack_dir = tmp_path / "skills" / "echo"
+    pack_dir.mkdir(parents=True)
+    (pack_dir / "SKILL_PACK.md").write_text(
+        "---\nname: echo\nversion: 1.0.0\nbackend: mcp-stdio\ncapabilities: [echo]\n"
+        "data_classes:\n  echo: safe\n---\nEcho.\n"
+    )
+    server_script = tmp_path / "echo_server.py"
+    server_script.write_text(
+        "import sys, json\n"
+        "def respond(id, result):\n"
+        "    sys.stdout.write(json.dumps({'jsonrpc':'2.0','id':id,'result':result}) + '\\n')\n"
+        "    sys.stdout.flush()\n"
+        "for line in sys.stdin:\n"
+        "    req = json.loads(line.strip())\n"
+        "    if req['method'] == 'initialize':\n"
+        "        respond(req['id'], {'protocolVersion':'2024-11-05','capabilities':{},'serverInfo':{'name':'e','version':'0.1.0'}})\n"
+        "    elif req['method'] == 'tools/call':\n"
+        "        respond(req['id'], {'content':[{'type':'text','text':req['params']['arguments']['msg']}]})\n"
+    )
+    (pack_dir / "mcp.json").write_text(
+        json.dumps({"command": [sys.executable, str(server_script)]})
+    )
+    registry = AgentRegistry()
+    loader = SkillLoader(agent_dir=tmp_path, registry=registry, agent_name="bot")
+    loader.load(["echo@1.0.0"])
+    await loader.start_all()
+    try:
+        result = await registry.execute_tool("bot", "echo", {"msg": "hi"})
+        assert "hi" in result
+    finally:
+        await loader.stop_all()

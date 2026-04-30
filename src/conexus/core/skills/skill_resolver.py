@@ -20,9 +20,14 @@ class SkillLoader:
         self._agent_dir = Path(agent_dir)
         self._registry = registry
         self._agent_name = agent_name
+        self._mcp_backends: list[McpStdioBackend] = []
 
     def load(self, skill_refs: list[str]) -> tuple[str, dict[str, str]]:
-        """Load each skill. Returns (combined_prompt_fragment, merged_tool_tags)."""
+        """Load each skill. Returns (combined_prompt_fragment, merged_tool_tags).
+
+        For mcp-stdio backends, call `await loader.start_all()` after `load()` and
+        `await loader.stop_all()` at shutdown.
+        """
         prompt_parts: list[str] = []
         tool_tags: dict[str, str] = {}
 
@@ -43,7 +48,12 @@ class SkillLoader:
                 if tools_py.exists():
                     mod = self._load_module(name, tools_py)
                     tools_cls = next(
-                        (v for v in vars(mod).values() if isinstance(v, type) and not v.__name__.startswith("_")),
+                        (
+                            v for v in vars(mod).values()
+                            if isinstance(v, type)
+                            and not v.__name__.startswith("_")
+                            and v.__module__ == mod.__name__
+                        ),
                         None,
                     )
                     if tools_cls:
@@ -58,9 +68,20 @@ class SkillLoader:
                 import json
                 cfg = json.loads(mcp_json.read_text())
                 backend = McpStdioBackend(command=cfg["command"], env=cfg.get("env"))
+                self._mcp_backends.append(backend)
                 self._registry.register_backend(self._agent_name, backend)
 
         return "\n\n".join(prompt_parts), tool_tags
+
+    async def start_all(self) -> None:
+        """Start lifecycle for all mcp-stdio backends loaded so far."""
+        for backend in self._mcp_backends:
+            await backend.start()
+
+    async def stop_all(self) -> None:
+        """Stop lifecycle for all mcp-stdio backends loaded so far."""
+        for backend in self._mcp_backends:
+            await backend.stop()
 
     @staticmethod
     def _load_module(name: str, path: Path):
