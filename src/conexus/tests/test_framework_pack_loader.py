@@ -1,7 +1,10 @@
 # src/conexus/tests/test_framework_pack_loader.py
+import json
 import pytest
 from conexus.core.skills.pack_loader import parse_skill_pack, SkillPackBackend
 from conexus.core.config.skill_loader import parse_skill_file
+from conexus.core.skills.skill_resolver import SkillLoader
+from conexus.core.agent_registry import AgentRegistry
 
 PACK_MD = """---
 name: wiki
@@ -59,10 +62,6 @@ def test_skill_frontmatter_skills_optional(tmp_path):
     doc = parse_skill_file(tmp_path / "SKILL.md")
     assert doc.frontmatter.skills == []
 
-
-import json
-from conexus.core.skills.skill_resolver import SkillLoader
-from conexus.core.agent_registry import AgentRegistry
 
 PACK_TOOLS = """
 class WikiSkillTools:

@@ -2,6 +2,7 @@ import json
 import sys
 import pytest
 from conexus.core.backends.python_backend import PythonBackend
+from conexus.core.backends.mcp_stdio_backend import McpStdioBackend
 from conexus.core.agent_registry import AgentRegistry
 
 
@@ -43,8 +44,6 @@ async def test_registry_unknown_agent():
     result = await registry.execute_tool("nobody", "greet", {})
     assert "error" in result
 
-
-from conexus.core.backends.mcp_stdio_backend import McpStdioBackend
 
 # Minimal MCP echo server as inline script
 _ECHO_SERVER = """

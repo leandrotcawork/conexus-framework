@@ -1,5 +1,6 @@
 import pytest
 from conexus.core.trifecta.tags import DataClass, auto_tag
+from conexus.core.trifecta.guard import TrifectaGuard, TrifectaViolation
 
 def test_auto_tag_untrusted_read():
     assert auto_tag("web_fetch") == DataClass.untrusted_read
@@ -21,9 +22,6 @@ def test_auto_tag_external_write():
 def test_auto_tag_returns_none_for_unknown():
     assert auto_tag("compute_hash") is None
     assert auto_tag("format_date") is None
-
-
-from conexus.core.trifecta.guard import TrifectaGuard, TrifectaViolation
 
 
 def _guard(extra: dict | None = None) -> TrifectaGuard:
