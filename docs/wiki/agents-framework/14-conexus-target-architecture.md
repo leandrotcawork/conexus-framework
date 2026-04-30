@@ -363,12 +363,12 @@ Effort: **~4 days.**
 > **Phases 0–5 above complete the kernel.** The v2 spec
 > (`docs/superpowers/specs/2026-04-29-conexus-framework-v2.md`) picks up from here with:
 >
-> | Phase | Work |
-> |-------|------|
-> | 6 | Framework / consumer split — `conexus` becomes a pip package; Ana + Pesquisador become consumers |
-> | 7 | `SKILL_PACK` format + `TrifectaGuard` (deterministic taint check) + per-agent `BudgetCap` |
-> | 8 | `TEAM_PACK` + `BudgetCascader` + `HandoffRouter` + cross-agent TrifectaGuard |
-> | 9 | `MCPProducer` (bearer auth) — expose Conexus to Claude Code / Cursor |
+> | Phase | Work | Status |
+> |-------|------|--------|
+> | 6 | Framework / consumer split — `conexus` becomes a pip package; Ana + Pesquisador become consumers | Done (commit 5c5162e) |
+> | 7 | `SKILL_PACK` format + `TrifectaGuard` (deterministic taint check) + `ToolBackend` abstraction + MCP-stdio consume | **Done** (commit 80dba33 + 16f864f). See `src/conexus/core/skills/`, `src/conexus/core/trifecta/`, `src/conexus/core/backends/`. |
+> | 8 | `TEAM_PACK` + `BudgetCascader` + `HandoffRouter` + cross-agent TrifectaGuard | Future |
+> | 9 | `MCPProducer` (bearer auth) — expose Conexus to Claude Code / Cursor | Future |
 >
 > This document governs Phases 0–5 only. The v2 spec governs Phases 6–9.
 
