@@ -36,6 +36,7 @@ class AgentHandlerConfig:
     progress_map: dict[str, str] | None = None  # tool_name -> Telegram progress text
     result_max_chars: int | None = None          # truncate oversized tool results
     fallback_msg: str = "Não consegui completar."
+    tool_tags: dict[str, str] | None = None  # None = TrifectaGuard disabled
 
 
 async def handle_agent_message(
@@ -49,10 +50,14 @@ async def handle_agent_message(
 
     Acquires no locks itself — concurrency is handled inside TrackedLLM.acall().
     """
+    from conexus.core.trifecta.guard import TrifectaGuard, TrifectaViolation
+
     if cfg.cap:
         r = cap_checker.check(cfg.name, cfg.cap)
         if not r.allowed:
             return cfg.cap_exceeded_msg
+
+    guard = TrifectaGuard(cfg.tool_tags) if cfg.tool_tags is not None else None
 
     now_brt = datetime.now(_BRT)
     history = store.chat_recent(cfg.name, limit=10)
@@ -126,6 +131,18 @@ async def handle_agent_message(
                         fn_args = {}
 
                     print(f"[{cfg.name}-tool] {fn_name}({fn_args})", flush=True)
+
+                    if guard:
+                        try:
+                            guard.check_and_record(fn_name)
+                        except (TrifectaViolation, ValueError) as exc:
+                            print(f"[trifecta] {cfg.name}: {exc}", flush=True)
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": json.dumps({"error": f"TrifectaGuard: {exc}"}),
+                            })
+                            continue
 
                     if (
                         progress
