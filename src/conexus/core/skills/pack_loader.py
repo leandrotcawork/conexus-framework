@@ -28,8 +28,6 @@ class SkillPackDocument(BaseModel):
     body: str
     pack_dir: Path
 
-    model_config = {"arbitrary_types_allowed": True}
-
 
 def parse_skill_pack(path: str | Path) -> SkillPackDocument:
     path = Path(path)

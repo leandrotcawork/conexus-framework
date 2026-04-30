@@ -1,7 +1,6 @@
 # src/conexus/tests/test_framework_pack_loader.py
-from pathlib import Path
 import pytest
-from conexus.core.skills.pack_loader import parse_skill_pack, SkillPackDocument, SkillPackBackend
+from conexus.core.skills.pack_loader import parse_skill_pack, SkillPackBackend
 from conexus.core.config.skill_loader import parse_skill_file
 
 PACK_MD = """---
