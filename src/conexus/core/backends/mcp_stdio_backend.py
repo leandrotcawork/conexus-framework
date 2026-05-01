@@ -16,6 +16,7 @@ class McpStdioBackend(ToolBackend):
         self._id = 0
         self._initialized = False
         self._tool_names: list[str] = []
+        self._call_lock = asyncio.Lock()
 
     async def start(self) -> None:
         self._proc = await asyncio.create_subprocess_exec(
@@ -43,15 +44,27 @@ class McpStdioBackend(ToolBackend):
 
     async def _call(self, method: str, params: dict) -> Any:
         assert self._proc and self._proc.stdin and self._proc.stdout
-        self._id += 1
-        req = json.dumps({"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
-        self._proc.stdin.write((req + "\n").encode())
-        await self._proc.stdin.drain()
-        line = await self._proc.stdout.readline()
-        resp = json.loads(line.decode())
-        if "error" in resp:
-            raise RuntimeError(f"MCP error: {resp['error']}")
-        return resp.get("result")
+        async with self._call_lock:
+            self._id += 1
+            req_id = self._id
+            req = json.dumps({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
+            self._proc.stdin.write((req + "\n").encode())
+            await self._proc.stdin.drain()
+            while True:
+                line = await self._proc.stdout.readline()
+                if not line:
+                    raise RuntimeError("MCP server closed stdout")
+                try:
+                    frame = json.loads(line.decode())
+                except json.JSONDecodeError:
+                    continue
+                if "id" not in frame:
+                    continue  # notification — skip
+                if frame["id"] != req_id:
+                    continue  # stale frame — lock should prevent, drop defensively
+                if "error" in frame:
+                    raise RuntimeError(f"MCP error: {frame['error']}")
+                return frame.get("result")
 
     async def execute(self, tool_name: str, args: dict) -> str:
         if not self._initialized:
