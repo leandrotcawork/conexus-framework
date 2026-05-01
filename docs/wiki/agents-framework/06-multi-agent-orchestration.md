@@ -407,3 +407,130 @@ The hazard table in §8 is partially implemented now:
 | Missing audit trail | `handoff_audit` SQLite table; `record_handoff()` called per route decision |
 
 Hazards without Phase 8 mitigation (still open): redundant work, context bloat, authority conflicts, silent divergence, stale state.
+
+---
+
+## 14. Conexus Phase 9 — Multi-Agent Runtime Activation + Replay + MCPProducer (shipped 2026-05-01)
+
+> Status: implemented. All claims verified against `src/conexus/core/team/`, `src/conexus/core/memory/`, `src/conexus/core/mcp/`, `src/conexus/cli/__main__.py`.
+
+Phase 9 activates the team runtime loop (`handle_team_message`), adds deterministic session replay, ships an MCPProducer server, and hardens several Phase 8 types. No existing single-agent behaviour changed.
+
+### 14.1 `handle_team_message` — the multi-agent execution loop
+
+`handle_team_message(*, team, configs, store, cap_checker, body, session_id, progress)` (`src/conexus/core/agent_handler.py:186`) is the new team entry point. It replaces the validate-only `run-team` stub with a real stack-based loop.
+
+**Key behaviours:**
+
+- **Entry point.** Starts at `team.manager` (or `team.members[0]` if no manager). Requires an `AgentHandlerConfig` for each member in `configs`.
+- **Tool injection.** On each turn, the active agent's `tools_schema` is merged with `build_delegate_schemas(team, agent_name)` — the LLM sees both its own tools and `delegate_to_<sibling>` tools side-by-side.
+- **Delegation dispatch.** When the LLM emits a `delegate_to_<X>` call, `parse_delegate_call` extracts `(target, payload, opts)`, a new `Handoff` is built (or `next_hop()` called on an existing one), the router resolves the target, `trim_transcript` applies `context_mode`, and a new `_Frame` is pushed onto the stack.
+- **Return semantics.** A child frame pops itself when: (a) it emits a plain-text reply and there is no `return_on`, (b) `return_on` text is found in the reply. On pop, the parent frame receives `[returned from <child>]: <reply>` as a user message. `termination_text` (default `"DONE"`) in any reply terminates the entire loop immediately.
+- **Serial-only.** `max_parallel_members=1` is enforced by breaking after the first `delegate_to_` call per turn — a second delegation in the same tool-call batch is not processed until the parent's next turn.
+- **Tool audit.** Every non-delegate tool call records via `record_tool_call(audit_conn, session_id=..., ...)` (`src/conexus/core/memory/tool_audit.py`). Trifecta-blocked calls record `outcome="trifecta_blocked"`.
+- **Cross-agent Trifecta.** The parent guard's current taint is captured via `guard.tainted_with()` and seeded into the child guard via `TrifectaGuard.from_handoff()`. The child cannot reset the Trifecta clock by hopping agent boundaries.
+- **Session ID.** If `session_id` is `None`, a random `sess-<12 hex>` is generated. Propagated to both `record_handoff` and `record_tool_call`.
+
+### 14.2 `delegate_tool.py` — LLM-facing delegation schema
+
+`src/conexus/core/team/delegate_tool.py` contains two public symbols:
+
+- `DELEGATE_PREFIX = "delegate_to_"` — the canonical prefix; the team loop uses `fn_name.startswith(DELEGATE_PREFIX)` to detect delegation.
+- `build_delegate_schemas(registry, current_agent) -> list[dict]` — generates one OpenAI function schema per sibling member. Each schema has three parameters: `task` (required, free-form object), `context_mode` (enum of `full|last_message|summary`), `return_on` (optional string).
+- `parse_delegate_call(tool_name, args) -> (target, payload, opts)` — validates and extracts the three fields. Raises `ValueError` for missing `task`, invalid `context_mode`, or empty target name.
+
+### 14.3 `transcript.py` — context_mode trimming
+
+`trim_transcript(messages, mode)` (`src/conexus/core/team/transcript.py:5`) trims the parent agent's message list before passing to the child:
+
+| `context_mode` | What the child sees |
+|---|---|
+| `full` | Full copy of parent's messages |
+| `last_message` | Only the last non-system message |
+| `summary` | Single synthetic system message: `"Transcript summary: N prior message(s) elided by handoff context_mode=summary."` |
+
+Default is `summary` (matches `Handoff.context_mode` default). The `handle_team_message` loop inserts the child agent's system prompt if none is present in the trimmed transcript.
+
+### 14.4 Session replay — `replay.py`
+
+`replay_session(conn, *, session_id, registry) -> ReplayReport` (`src/conexus/core/team/replay.py:29`) replays a frozen audit session against a (possibly changed) registry to detect routing regressions.
+
+**Algorithm:**
+
+1. Queries `handoff_audit` for all rows with `session_id=?`, ordered by `id`.
+2. For each row, reconstructs a `Handoff` from `(from_agent, recorded_to, payload_json)` and calls `router._resolve(h)`.
+3. If `resolved != recorded_to`, records a `ReplayMismatch(kind="route", expected=recorded_to, actual=resolved)`.
+4. Counts `tool_audit` rows for the session and reports as `tools_replayed`.
+
+**Return type:** `ReplayReport(handoffs_replayed: int, tools_replayed: int, mismatches: list[ReplayMismatch])`.
+
+`ReplayMismatch(kind, expected, actual, detail)` — `kind` is `"route"` or `"missing_member"`.
+
+### 14.5 Tool audit — `tool_audit.py`
+
+`src/conexus/core/memory/tool_audit.py` adds a `tool_audit` table:
+
+```sql
+CREATE TABLE IF NOT EXISTS tool_audit (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts          TEXT NOT NULL,
+  session_id  TEXT NOT NULL,
+  agent       TEXT NOT NULL,
+  tool        TEXT NOT NULL,
+  args_json   TEXT NOT NULL,
+  result      TEXT NOT NULL,
+  outcome     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tool_audit_session ON tool_audit(session_id);
+```
+
+`init_tool_audit(conn)` — idempotent DDL. `record_tool_call(conn, *, session_id, agent, tool, args, result, outcome)` — inserts one row; `args` is serialised via `json.dumps(args, sort_keys=True)`.
+
+`SqliteStore.init_db()` now calls `init_tool_audit` alongside `init_handoff_audit` (`src/conexus/core/memory/sqlite_store.py:87`). `SqliteStore.conn` is a new property that opens an unclosed connection (caller responsible for `.close()`), used by `handle_team_message` to hold a single audit connection across the full session (`src/conexus/core/memory/sqlite_store.py:91`).
+
+### 14.6 Phase 9 changes to existing Phase 8 types
+
+**`Handoff.trust_boundary_cleared`** changed from `bool` to `str | None` (`src/conexus/core/team/handoff.py:22`). A non-`None` string value means the boundary was cleared (legacy `True` → `"legacy:phase-8"` via `field_validator`; legacy `False` → `None`). This makes the reason auditable.
+
+**`Handoff.tags`** (`set[DataClass]`) now propagates through the full hop chain via `next_hop()` — `model_copy(update={...})` preserves `tags` from the parent unless explicitly overridden.
+
+**`TrifectaGuard.tainted_with() -> set[DataClass]`** added (`src/conexus/core/trifecta/guard.py:45`) — returns a snapshot of the current taint set. Used by the team loop to seed the child guard before delegation.
+
+**`TrifectaGuard.clear_boundary(reason: str)`** now requires a non-empty, non-whitespace reason; raises `ValueError` otherwise (`src/conexus/core/trifecta/guard.py:29`).
+
+**`TeamPolicy.max_parallel_members: int = 1`** added (`src/conexus/core/team/team_pack.py:19`), validated `>= 1` via `field_validator`. Phase 9 is serial-only; this field is a forward gate for future parallel dispatch.
+
+**`handoff_audit` table** gained a `session_id TEXT NOT NULL DEFAULT 'legacy'` column (`src/conexus/core/memory/handoff_audit.py:12`). `init_handoff_audit` runs an idempotent `ALTER TABLE` for pre-existing tables. `record_handoff` accepts a `session_id=` kwarg (default `"legacy"`) (`src/conexus/core/memory/handoff_audit.py:32`).
+
+**`McpStdioBackend._call`** uses `asyncio.Lock` (`self._call_lock`) for JSON-RPC id correlation; frames without `"id"` (notifications) are skipped; frames with a stale `id` are dropped defensively (`src/conexus/core/backends/mcp_stdio_backend.py:47–67`). The backend also populates `self._tool_names` via `tools/list` during `start()`.
+
+### 14.7 MCPProducer — Conexus as MCP server
+
+`build_mcp_producer(*, wiki_root, bearer_token) -> FastMCP` (`src/conexus/core/mcp/producer.py:36`) is the Phase 9 implementation of the §9b skeleton. It uses `fastmcp` and exposes:
+
+- **`verify_bearer(token: str) -> {"ok": true}`** — bearer validation tool; stdio transport has no HTTP headers, so the client calls this after `initialize`. Internally calls `check_bearer(f"Bearer {token}", expected=bearer_token)` with `hmac.compare_digest` constant-time comparison.
+- **`wiki_search(query: str) -> list[{"path", "size"}]`** — literal substring scan across `*.md` files under `wiki_root`, up to 20 hits.
+- **`wiki://{path}` resource (`wiki_page`)** — returns raw markdown of a file at `wiki_root/path`. Path is sandboxed: `target.resolve()` must start with `wiki_root.resolve()`.
+
+Phase 9 scope: stdio transport only. Streamable HTTP and scope-based access control are explicitly deferred.
+
+`check_bearer(authorization_header, *, expected)` (`src/conexus/core/mcp/producer.py:22`) is a standalone helper for HTTP transports (future use). Raises `BearerError` on missing header, wrong scheme, or wrong token.
+
+### 14.8 CLI additions
+
+Two new `conexus` subcommands added in `src/conexus/cli/__main__.py`:
+
+**`conexus mcp-server [--wiki-root PATH]`** — runs `build_mcp_producer` with `CONEXUS_MCP_TOKEN` env var as the bearer token, then `server.run(transport="stdio")`. Fails with `SystemExit` if the env var is unset.
+
+**`conexus replay <pack> --db <path> --session-id <id> [--available-agents <csv>]`** — loads a TEAM_PACK via `TeamLoader`, opens the SQLite DB, runs `replay_session`, and prints `handoffs_replayed`, `tools_replayed`, and any mismatches.
+
+### 14.9 Coordination hazard update (Phase 9)
+
+| Hazard | Phase 9 mitigation |
+|---|---|
+| Authority conflicts | `termination_text` (default `"DONE"`) terminates the loop; `return_on` returns control to a specific agent — no implicit broadcasting |
+| Stale routing | `conexus replay` compares recorded routes against current registry; mismatches surfaced before deploy |
+| Cross-agent exfil (Trifecta) | `TrifectaGuard.tainted_with()` seeds child guard; `trust_boundary_cleared` is now a reason string, not a silent bool |
+| Missing tool audit | `tool_audit` table + `record_tool_call` covers every non-delegate call in team sessions |
+
+Hazards still open: redundant work, context bloat (partial: `trim_transcript` limits forwarding), silent divergence.

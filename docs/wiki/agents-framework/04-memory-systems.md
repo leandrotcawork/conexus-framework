@@ -211,8 +211,16 @@ Run these on every change to the memory pipeline, pin baselines, fail CI on regr
 
 ## 13. Conexus‑specific recommendation
 
+**Phase 9 additions to the SQLite layer (shipped 2026-05-01):**
+
+`SqliteStore.init_db()` now calls `init_tool_audit(conn)` in addition to `init_handoff_audit(conn)`, creating the `tool_audit` table on first boot (`src/conexus/core/memory/sqlite_store.py:87`).
+
+`SqliteStore.conn` (property, `src/conexus/core/memory/sqlite_store.py:91`) opens a direct, unclosed `sqlite3.Connection`. Caller is responsible for `.close()`. Intended for long-lived operations — `handle_team_message` uses it to hold a single connection across the full team session rather than opening per-write connections.
+
+`tool_audit` table (see `src/conexus/core/memory/tool_audit.py`) — per-tool-call record for replay fidelity: `(id, ts, session_id, agent, tool, args_json, result, outcome)`. Indexed on `session_id`. Populated by `record_tool_call(conn, *, session_id, agent, tool, args, result, outcome)`.
+
 **Keep:**
-- `core/memory/sqlite_store.py` — episodic log, idempotency, budget state.
+- `core/memory/sqlite_store.py` — episodic log, idempotency, budget state, tool + handoff audit.
 - `core/memory/wiki_store.py` — semantic memory. Git‑backed markdown is the *strongest* piece of Conexus's memory stack; don't replace it.
 - `SKILL.md` files — procedural memory; perfect as is.
 

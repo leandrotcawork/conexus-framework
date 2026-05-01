@@ -236,41 +236,31 @@ The MCP-stdio consume path is implemented. The integration approach differs from
 
 The `AgentRegistry` `register()` / `register_backend()` split (`src/conexus/core/agent_registry.py:15-20`) preserves backward compatibility: existing code calling `register(agent, tools_obj)` is automatically wrapped in `PythonBackend`.
 
-Two integration points still to own for a full production integration:
+One integration point still to own for a full production integration:
 
-- **Schema conversion / `tools/list`** — `McpStdioBackend` currently dispatches by name; it does not yet call `tools/list` to auto-populate the tool schema catalog. Schemas must still be provided to `AgentHandlerConfig.tools_schema` manually or via the existing `schema_gen` pipeline.
 - **Budget accounting** — `UsageTracker` counts LLM cost; per-server tool-call counters for `CapChecker` are deferred.
 
-### 9b. Expose Conexus via MCP (Conexus as server)
+Phase 9 update: `McpStdioBackend.start()` now calls `tools/list` after `initialize` and populates `self._tool_names` (`src/conexus/core/backends/mcp_stdio_backend.py:34`). The tool name list is available via `backend.list_tools()`. Schema population in `AgentHandlerConfig.tools_schema` is still the caller's responsibility — `tools/list` results populate `_tool_names` for routing but are not auto-converted to OpenAI function schemas.
 
-Ship a `conexus-mcp` package that wraps `WikiStore`, `SqliteStore`, the calendar client as tools/resources. Then Claude Desktop on the laptop can read Ana's wiki directly, no Telegram round-trip. This is the higher-leverage direction — write once, gain every host for free.
+### 9b. Expose Conexus via MCP (Conexus as server) — **shipped in Phase 9**
 
-Skeleton:
+`build_mcp_producer(*, wiki_root, bearer_token) -> FastMCP` (`src/conexus/core/mcp/producer.py:36`) is the Phase 9 implementation. It uses `fastmcp` and exposes:
 
-```python
-# conexus_mcp/server.py
-from mcp.server.fastmcp import FastMCP
-from core.memory.wiki_store import WikiStore
-from core.memory.sqlite_store import SqliteStore
+- **`verify_bearer(token: str) -> {"ok": true}`** — bearer validation as an MCP tool; required because stdio transport carries no HTTP `Authorization` header. Clients call it after `initialize`. Uses `hmac.compare_digest` for constant-time comparison.
+- **`wiki_search(query: str) -> list[{"path", "size"}]`** — literal substring scan over `*.md` files in `wiki_root`, up to 20 hits.
+- **`wiki://{path}` resource (`wiki_page`)** — returns raw markdown. Path is sandboxed: `(wiki_root / path).resolve()` must start with `wiki_root.resolve()` or a `ValueError` is raised.
 
-mcp = FastMCP("conexus")
-wiki = WikiStore.default()
-mem  = SqliteStore.default()
+**Phase 9 scope:** stdio transport only. Streamable HTTP transport and scope-based access control are explicitly deferred to a future hardening phase (see `src/conexus/core/mcp/producer.py` module docstring).
 
-@mcp.tool()
-def wiki_search(q: str, k: int = 5): return wiki.search(q, k)
+`check_bearer(authorization_header, *, expected)` (`src/conexus/core/mcp/producer.py:22`) is a standalone helper for HTTP transports (future use): validates `Authorization: Bearer <token>` with constant-time comparison; raises `BearerError` on missing header, wrong scheme, or wrong token.
 
-@mcp.tool()
-def wiki_write(path: str, body: str, commit_msg: str): return wiki.write(path, body, commit_msg)
+**Starting the server:**
 
-@mcp.resource("wiki://{path}")
-def wiki_read(path: str) -> str: return wiki.read(path)
-
-@mcp.tool()
-def memory_get(key: str): return mem.get(key)
+```bash
+CONEXUS_MCP_TOKEN=<secret> conexus mcp-server --wiki-root ./data/wiki
 ```
 
-Run under `uv run python -m conexus_mcp` on the Fly machine and expose `/mcp` through the same web surface the bots use.
+`conexus mcp-server` (`src/conexus/cli/__main__.py:102`) reads `CONEXUS_MCP_TOKEN` from env (exits if unset), calls `build_mcp_producer`, and runs `server.run(transport="stdio")`. Claude Desktop or any MCP host can then spawn it as a stdio server pointing at the Fly volume path.
 
 ---
 
