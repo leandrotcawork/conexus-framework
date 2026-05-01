@@ -87,6 +87,17 @@ class SqliteStore:
             init_handoff_audit(conn)
             init_tool_audit(conn)
 
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """Open a direct connection to the DB. Caller is responsible for closing.
+
+        Intended for audit queries in tests and for long-lived operations like
+        handle_team_message that need a single connection across multiple writes.
+        """
+        c = sqlite3.connect(self.db_path)
+        c.row_factory = sqlite3.Row
+        return c
+
     @contextmanager
     def connect(self):
         conn = sqlite3.connect(self.db_path)

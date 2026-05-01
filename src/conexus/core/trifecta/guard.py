@@ -42,6 +42,10 @@ class TrifectaGuard:
             seed_taint=handoff.tags,
         )
 
+    def tainted_with(self) -> "set[DataClass]":
+        """Snapshot of current taint set. Used by team loop for cross-agent seeding."""
+        return set(self._taint)
+
     def check_and_record(self, tool_name: str) -> DataClass:
         """Resolve tag, check rule, record taint. Returns tag. Raises on violation."""
         if tool_name in self._tool_tags:
