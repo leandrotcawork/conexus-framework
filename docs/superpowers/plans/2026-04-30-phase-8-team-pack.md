@@ -1511,6 +1511,7 @@ Phase 8 lands the team-coordination *substrate* (typed envelope, deterministic r
 - **`max_parallel_members`** (B-9) — `TeamPolicy` model lacks this; Phase 9 adds it once parallel scheduling is wired.
 - **Trust-boundary clear as auditable operation** (B-2) — Phase 8 uses raw `bool`; Phase 9 introduces a logged `TrifectaGuard.clear_boundary(reason)` operation.
 - **Pip-installable TEAM_PACK smoke test** (B-7) and **`deployment` field round-trip test** (B-8) — Phase 9 adds with the multi-host activation work.
+- **`policy.termination_text` consumed by agent loop** — Phase 8 parses the field; Phase 9 wires the loop check (`reply.endswith(termination_text)` → halt) once the multi-agent loop is active.
 
 Spec §9 acceptance for `delegate_to_<agent>` flow + §1.6 stack-return + §1.9 max_parallel_members must all land in Phase 9 before v2 acceptance.
 

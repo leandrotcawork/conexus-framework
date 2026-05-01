@@ -175,7 +175,10 @@ def main() -> None:
     suggest_cmd.add_argument("tools_file", help="Path to a tools.py file")
     suggest_cmd.set_defaults(func=_handle_tag_suggest)
 
-    team_p = sub.add_parser("run-team", help="Validate + run a TEAM_PACK")
+    team_p = sub.add_parser(
+        "run-team",
+        help="Validate + load a TEAM_PACK (Phase 8: validate-only; runtime in Phase 9)",
+    )
     team_p.add_argument("pack", help="path to TEAM_PACK.md")
     team_p.add_argument("--available-agents", default="", help="comma-sep agent names available")
     team_p.set_defaults(func=_handle_run_team)
