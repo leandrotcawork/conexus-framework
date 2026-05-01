@@ -1,11 +1,11 @@
 {
   "project": "Conexus",
-  "current_phase_id": "phase-7",
+  "current_phase_id": "phase-9",
   "summary": {
-    "total_phases": 3,
-    "completed_phases": 2,
-    "total_tasks": 15,
-    "completed_tasks": 9
+    "total_phases": 5,
+    "completed_phases": 4,
+    "total_tasks": 27,
+    "completed_tasks": 27
   },
   "phases": [
     {
@@ -25,16 +25,120 @@
     {
       "id": "phase-7",
       "name": "Phase 7 — SKILL_PACK + TrifectaGuard + BudgetCap",
-      "status": "not_started",
+      "status": "completed",
+      "completed_at": "2026-04-30T00:00:00-03:00",
+      "plan": "docs/superpowers/plans/2026-04-29-phase-7-skill-pack-trifecta.md"
+    },
+    {
+      "id": "phase-8",
+      "name": "Phase 8 — TEAM_PACK + Handoff + BudgetCascader + Cross-Agent Trifecta",
+      "status": "completed",
+      "started_at": "2026-04-30T00:00:00-03:00",
+      "completed_at": "2026-04-30T23:00:00-03:00",
+      "plan": "docs/superpowers/plans/2026-04-30-phase-8-team-pack.md"
+    },
+    {
+      "id": "phase-9",
+      "name": "Phase 9 — Multi-Agent Runtime Activation + Replay + MCPProducer",
+      "status": "planned",
       "plan": null,
-      "spec": "docs/superpowers/specs/2026-04-29-conexus-framework-v2.md",
-      "subtasks": [
-        { "id": "7.1", "name": "skills: field in SKILL.md frontmatter (pydantic + skill_loader)", "done": false },
-        { "id": "7.2", "name": "SkillLoader: resolve skills list, load SKILL_PACK tools, inject prompt fragments", "done": false },
-        { "id": "7.3", "name": "Backend abstraction: python/mcp-stdio/mcp-http dispatch via AgentRegistry", "done": false },
-        { "id": "7.4", "name": "TrifectaGuard: tool tagging + taint propagation + exfil block", "done": false },
-        { "id": "7.5", "name": "conexus tag --suggest <tools.py> CLI heuristic preview", "done": false },
-        { "id": "7.6", "name": "Integration tests: SKILL_PACK load + TrifectaGuard acceptance scenario", "done": false }
+      "tasks": [
+        {
+          "id": "T-028",
+          "title": "delegate_to_<agent> LLM-emitted tool + agent loop yield/resume",
+          "description": "Spec §1.6: LLM tool that hands the loop to a sibling agent via Handoff envelope.",
+          "status": "planned",
+          "priority": "high",
+          "depends_on": [],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-029",
+          "title": "context_mode per-edge transcript trimming + return_on stack-return",
+          "description": "Wire the Phase 8 fields (full|last_message|summary, return_on) into actual loop semantics.",
+          "status": "planned",
+          "priority": "high",
+          "depends_on": ["T-028"],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-030",
+          "title": "max_parallel_members + termination_text consumption",
+          "description": "Add max_parallel_members to TeamPolicy; loop checks termination_text on every reply.",
+          "status": "planned",
+          "priority": "medium",
+          "depends_on": ["T-028"],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-031",
+          "title": "TrifectaGuard.clear_boundary(reason) auditable operation",
+          "description": "Replace raw trust_boundary_cleared bool with logged operator action; audit row required.",
+          "status": "planned",
+          "priority": "medium",
+          "depends_on": [],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-032",
+          "title": "Replay: deterministic frozen-trace re-runner",
+          "description": "Spec §9 acceptance: replay handoff_audit + invocation log against current pack versions.",
+          "status": "planned",
+          "priority": "high",
+          "depends_on": [],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-033",
+          "title": "MCPProducer — expose Conexus tools to Claude Code as MCP server",
+          "description": "Spec §9 acceptance: MCPProducer scaffolding + at least one production tool exposed.",
+          "status": "planned",
+          "priority": "high",
+          "depends_on": [],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-034",
+          "title": "Pip-installable TEAM_PACK smoke test + deployment field round-trip",
+          "description": "Codex B-7 + B-8: prove pip-install discovery + deployment field preserved end-to-end.",
+          "status": "planned",
+          "priority": "low",
+          "depends_on": [],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        },
+        {
+          "id": "T-035",
+          "title": "McpStdioBackend hardening — handle interleaved notifications/message frames",
+          "description": "Current readline() picks up notifications as response. Add JSON-RPC id correlation.",
+          "status": "planned",
+          "priority": "medium",
+          "depends_on": [],
+          "started_at": null,
+          "completed_at": null,
+          "notes": null,
+          "subtasks": []
+        }
       ]
     }
   ]

@@ -1,61 +1,82 @@
 # System Pulse — Conexus
-> Auto-updated: 2026-04-29
+> Auto-updated: 2026-04-30
 
 ## Current Phase
-**Phase 7 planned.** SKILL_PACK + TrifectaGuard + BudgetCap — not yet started.
-- Phases 0-5 = kernel work; Phase 6 = framework/consumer split (DONE); Phases 7-9 = v2 net-new
-- Phase 7 subtasks: 7.1 skills: field → 7.2 SkillLoader → 7.3 backend abstraction → 7.4 TrifectaGuard → 7.5 tag CLI → 7.6 integration tests
-- Pre-phase: write implementation plan (`nexus:writing-plans` + spec §1.3, §1.4, §1.8)
+**Phase 8 COMPLETE** (12 tasks + 2 codex-blocker fixes + Opus review applied). Multi-agent substrate shipped: TEAM_PACK + Handoff + HandoffRouter + BudgetCascader + cross-agent TrifectaGuard. 52 framework tests passing, ruff clean.
+- Phases 0-5 = kernel; Phase 6 = framework/consumer split; Phase 7 = SKILL_PACK + Trifecta; Phase 8 = TEAM_PACK + cross-agent Trifecta (DONE)
+- Phase 9 next: multi-agent runtime activation (delegate_to_<agent> LLM tool, context_mode/return_on semantics, replay, MCPProducer, max_parallel_members)
 
 ## Recent Changes
-- 2026-04-29: Phase 6 complete (6 sub-phases, ~15 commits): framework/consumer split, src/conexus/core/, adapters/, CLI entry, dep split, test reorganization, dogfood
-- 2026-04-29: Added full dev-workflow infrastructure (9 commits): wiki-keeper subagent, 5 policy docs, CLAUDE.md wiring, wiki partition 14 cross-ref
-- (prior sessions not yet recorded)
+- 2026-04-30: Phase 8 complete (15 commits d476101..b7fa52c). Codex pre-review found 11 blockers; B-1 (router AST sandbox escape) + B-3 (audit not wired) fixed inline at aa717aa; remaining 9 deferred to Phase 9 with rationale. Opus review APPROVED_WITH_NOTES; cosmetic fixes applied (b7fa52c).
+- 2026-04-30: Phase 7 follow-up fixes (16f864f): SkillLoader.start_all/stop_all lifecycle for mcp-stdio; class detection tightened (v.__module__ == mod.__name__).
+- 2026-04-30: Wiki sync (45eff1a): Phase 8 partitions 03/05/06/13/14 updated; partition 06 now has full §13 multi-agent orchestration section.
+- 2026-04-30: Phase 7 complete (8 tasks): SKILL_PACK, DataClass/auto_tag, TrifectaGuard, ToolBackend/PythonBackend, McpStdioBackend, SkillLoader, handler hook, tag CLI.
+- 2026-04-29: Phase 6 complete (6 sub-phases, ~15 commits): framework/consumer split, src/conexus/core/, adapters/, CLI entry, dep split, dogfood.
 
 ## Architecture Overview
 ```
 Conexus = Ana + Pesquisador on Fly.io (gru) + Telegram
 main.py (shim) → adapters/telegram_runner.py → agents/{ana,pesquisador}/
 src/conexus/core/ = framework kernel (agent_handler, agent_registry, llm, memory, scheduler)
-src/conexus/cli/ = CLI entry point + build_runtime primitive
+  + skills/ (pack_loader, skill_resolver) + trifecta/ (tags, guard) + backends/ (base, python, mcp_stdio)
+  + team/ (handoff, team_pack, team_loader, team_registry, handoff_router, budget_cascader)   ← Phase 8
+  + memory/handoff_audit.py                                                                    ← Phase 8
+src/conexus/cli/ = CLI entry point + build_runtime + tag suggest + run-team subcommands
 adapters/ = consumer wiring (Telegram, SSH, wiki clone)
-SQLite @ /data/conexus.db, wiki @ /data/wiki/ (git-backed, SSH key)
+agents/teams/product_team/TEAM_PACK.md = reference 3-member pack (ana + pm + researcher)
+SQLite @ /data/conexus.db (now includes handoff_audit table), wiki @ /data/wiki/
 Two Telegram bots in one process; APScheduler for jobs
 conexus pip wheel = src/conexus/ only (framework deps subset)
 ```
 
 ## Established Patterns
 - TDD: write failing test → impl → pass → commit (Conventional Commits)
-- Subagent dispatch: fresh Sonnet per task; Opus for phase reviews
-- Quality gates: pytest + ruff per-commit; full suite + eval per-phase
+- Subagent dispatch: fresh Sonnet/Haiku per task (sequential — file conflicts); Opus for phase reviews
+- Quality gates: pytest + ruff per-commit; **batched targeted tests at phase end** (Windows full-suite hangs)
 - Wiki updates: wiki-keeper subagent after every phase review
+- Codex pre-review: mandatory per `docs/dev-workflow/03-codex-validation.md`; verdict logged in plan §"Codex log"
 - All policy: `docs/dev-workflow/` — read once per session
 
 ## Known Risks and Tech Debt
-- `codex:codex-rescue` sandbox blocks file reads in this env — direct audit needed for Phase 7 pre-validation
-- `src/conexus/cli/__main__.py` imports consumer code (agents.ana.tools, agents.pesquisador.tools) — violates framework purity; fix before Phase 7
-- `adapters/telegram_runner.py` still constructs AgentHandlerConfig directly (build_runtime not yet wired in) — duplicate construction path
-- `docs/wiki/agents-framework/` commit strategy TBD (local-only vs. tracked)
+- `codex:codex-rescue` sandbox blocks file reads in this env — direct audit needed for future phases
+- Windows pytest full suite hangs (>2 min, no output) — likely scheduler/Telegram test that doesn't stop; bypass via per-file batched runs
+- McpStdioBackend reads single line for tools/list response — vulnerable to interleaved notifications/message log frames (Phase 9 hardening)
+- Phase 6/7/8/wiki commits all local; not pushed to remote yet (deferred per user)
+- Pre-existing ruff F401 in scripts/bootstrap_google.py + tests/conftest.py (unused imports) — pre-Phase-7 tech debt, untouched per surgical-changes policy
+- Phase 9 deferred items (per plan): delegate_to_<agent> LLM tool, context_mode per-edge, return_on stack-return, max_parallel_members, trust-boundary clear as auditable op, pip-install smoke, deployment field round-trip, termination_text loop wiring, replay, MCPProducer
 
 ## Key File Locations
 - Kernel loop: `src/conexus/core/agent_handler.py`
-- Agent registry: `src/conexus/core/agent_registry.py`
+- Agent registry: `src/conexus/core/agent_registry.py` (multi-backend, routes via list_tools())
+- Backend ABC: `src/conexus/core/backends/base.py` (incl. list_tools() contract)
+- SKILL_PACK parser: `src/conexus/core/skills/pack_loader.py`
+- SkillLoader: `src/conexus/core/skills/skill_resolver.py`
+- TrifectaGuard: `src/conexus/core/trifecta/guard.py` (incl. seed_taint + from_handoff)
+- DataClass/auto_tag: `src/conexus/core/trifecta/tags.py`
+- Handoff envelope: `src/conexus/core/team/handoff.py`
+- HandoffRouter: `src/conexus/core/team/handoff_router.py` (AST walker; audit-aware)
+- TeamLoader/Registry: `src/conexus/core/team/{team_loader,team_registry,team_pack}.py`
+- BudgetCascader: `src/conexus/core/team/budget_cascader.py`
+- Audit table: `src/conexus/core/memory/handoff_audit.py`
+- Reference team: `agents/teams/product_team/TEAM_PACK.md`
 - Framework runtime builder: `src/conexus/cli/runner.py`
-- CLI entry point: `src/conexus/cli/__main__.py`
+- CLI entry point: `src/conexus/cli/__main__.py` (run agent / tag suggest / run-team)
 - Consumer wiring: `adapters/telegram_runner.py`
 - Boot shim: `main.py`
-- Framework tests: `src/conexus/tests/test_framework_*.py`
+- Framework tests: `src/conexus/tests/test_framework_*.py` (incl. team_*, budget_cascader, cli)
 - Agent tests: `agents/{ana,pesquisador}/tests/`
-- Dev workflow: `docs/dev-workflow/` (5 policy docs + README)
-- Wiki-keeper subagent: `.claude/agents/wiki-keeper.md`
+- Dev workflow: `docs/dev-workflow/`
 - V2 spec: `docs/superpowers/specs/2026-04-29-conexus-framework-v2.md`
-- Migration plan: `docs/superpowers/plans/2026-04-29-framework-consumer-split-migration.md`
+- Phase 8 plan: `docs/superpowers/plans/2026-04-30-phase-8-team-pack.md`
 
 ## Active Decisions
-- ADR-001: wiki-keeper scope locked to `docs/wiki/agents-framework/` — see `.brain/decisions/001-wiki-keeper-scope.md`
-- Monorepo approach for framework/consumer split (per migration plan §2 "Decision: monorepo with two pyproject files first")
+- ADR-001: wiki-keeper scope locked to `docs/wiki/agents-framework/`
+- Monorepo approach for framework/consumer split (per migration plan §2)
+- **Phase 8 Scope Decision (2026-04-30):** narrowed to team-coordination substrate; replay + MCPProducer + LLM-emitted delegate tools all deferred to Phase 9 (recorded in Phase 8 plan §"Phase 8 Scope Decision" + §"Items Deferred to Phase 9")
+- HandoffRouter `when:` expressions evaluated via whitelisted AST walker — `eval` is unsafe for pip-installed third-party TEAM_PACKs (B-1 fix at aa717aa)
+- Handoff audit captures original envelope (replay fidelity); resolved target reconstructable from edges + outcome string
 
 ## Quality Gates (active)
 Per `docs/dev-workflow/05-quality-gates.md`:
-- Per-commit: `uv run pytest -x`, `uv run ruff check .`, no print() in core/, no TODO without tracking
-- Per-phase: full pytest, Opus review, /simplify, wiki-keeper diff
+- Per-commit: targeted `uv run pytest -k` or per-file path, `uv run ruff check .`, no print() in core/, no TODO without tracking
+- Per-phase: batched framework test list (full suite hangs on Windows), Opus review, /simplify, wiki-keeper diff, codex pre-review
