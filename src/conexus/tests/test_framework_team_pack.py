@@ -1,6 +1,7 @@
 import pytest
 from conexus.core.team.team_pack import parse_team_pack, TeamPackDocument
 from conexus.core.team.team_loader import TeamLoader
+from conexus.core.team.team_registry import TeamRegistry
 
 PACK_MD = """---
 name: product_team
@@ -54,3 +55,22 @@ def test_team_loader_returns_document(tmp_path):
     loader = TeamLoader(available_agents={"ana", "pm", "researcher"})
     doc = loader.load(tmp_path / "TEAM_PACK.md")
     assert isinstance(doc, TeamPackDocument)
+
+
+def test_team_registry_exposes_members(tmp_path):
+    (tmp_path / "TEAM_PACK.md").write_text(PACK_MD)
+    loader = TeamLoader(available_agents={"ana", "pm", "researcher"})
+    doc = loader.load(tmp_path / "TEAM_PACK.md")
+    reg = TeamRegistry(doc)
+    assert reg.members == ["ana", "pm", "researcher"]
+    assert reg.manager == "pm"
+    assert reg.has_member("ana") is True
+    assert reg.has_member("ghost") is False
+
+
+def test_team_registry_edges_lookup(tmp_path):
+    (tmp_path / "TEAM_PACK.md").write_text(PACK_MD)
+    loader = TeamLoader(available_agents={"ana", "pm", "researcher"})
+    reg = TeamRegistry(loader.load(tmp_path / "TEAM_PACK.md"))
+    edges = reg.edges_from("pm")
+    assert any(e["to"] == "researcher" for e in edges)
