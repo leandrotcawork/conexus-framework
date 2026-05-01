@@ -109,6 +109,40 @@ def _handle_mcp_server(args: argparse.Namespace) -> None:
     server.run(transport="stdio")
 
 
+def _handle_replay(args: argparse.Namespace) -> None:
+    import sqlite3
+    from conexus.core.memory.handoff_audit import init_handoff_audit
+    from conexus.core.memory.tool_audit import init_tool_audit
+    from conexus.core.team.replay import replay_session
+    from conexus.core.team.team_loader import TeamLoader
+    from conexus.core.team.team_registry import TeamRegistry
+
+    db_path = Path(args.db)
+    if not db_path.exists():
+        raise SystemExit(f"DB not found: {db_path}")
+
+    available = set(filter(None, args.available_agents.split(","))) if args.available_agents else None
+    doc = TeamLoader(available or set()).load(args.pack)
+    registry = TeamRegistry(doc)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        init_handoff_audit(conn)
+        init_tool_audit(conn)
+        report = replay_session(conn, session_id=args.session_id, registry=registry)
+    finally:
+        conn.close()
+
+    print(f"handoffs_replayed: {report.handoffs_replayed}")
+    print(f"tools_replayed:    {report.tools_replayed}")
+    if report.mismatches:
+        print(f"mismatches ({len(report.mismatches)}):")
+        for m in report.mismatches:
+            print(f"  [{m.kind}] expected={m.expected!r} actual={m.actual!r} {m.detail}")
+    else:
+        print("mismatches: none")
+
+
 def _handle_run_team(args) -> int:
     from conexus.core.team.team_loader import TeamLoader
     available = set(filter(None, args.available_agents.split(",")))
@@ -188,6 +222,13 @@ def main() -> None:
     mcp_p = sub.add_parser("mcp-server", help="Run Conexus as an MCP server (stdio)")
     mcp_p.add_argument("--wiki-root", default="./data/wiki")
     mcp_p.set_defaults(func=_handle_mcp_server)
+
+    replay_p = sub.add_parser("replay", help="Replay a frozen audit session against a registry")
+    replay_p.add_argument("pack", help="Path to TEAM_PACK.md")
+    replay_p.add_argument("--db", required=True, help="Path to SQLite DB")
+    replay_p.add_argument("--session-id", required=True, help="Session ID to replay")
+    replay_p.add_argument("--available-agents", default="", help="Comma-sep agent names")
+    replay_p.set_defaults(func=_handle_replay)
 
     team_p = sub.add_parser(
         "run-team",
