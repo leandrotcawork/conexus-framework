@@ -99,6 +99,18 @@ def _handle_run_agent(args: argparse.Namespace) -> None:
     asyncio.run(_run_loop(args.name, agents_dir, data_dir))
 
 
+def _handle_run_team(args) -> int:
+    from conexus.core.team.team_loader import TeamLoader
+    available = set(filter(None, args.available_agents.split(",")))
+    try:
+        doc = TeamLoader(available).load(args.pack)
+    except Exception as exc:
+        print(f"team load failed: {exc}")
+        return 1
+    print(f"loaded team {doc.frontmatter.name}: {doc.frontmatter.members}")
+    return 0
+
+
 def _handle_tag_suggest(args: argparse.Namespace) -> None:
     """Print auto-tag suggestions for every public method in a tools.py."""
     import importlib.util as _ilu
@@ -162,6 +174,11 @@ def main() -> None:
     suggest_cmd = tag_sub.add_parser("suggest", help="Print suggested data_classes for a tools.py")
     suggest_cmd.add_argument("tools_file", help="Path to a tools.py file")
     suggest_cmd.set_defaults(func=_handle_tag_suggest)
+
+    team_p = sub.add_parser("run-team", help="Validate + run a TEAM_PACK")
+    team_p.add_argument("pack", help="path to TEAM_PACK.md")
+    team_p.add_argument("--available-agents", default="", help="comma-sep agent names available")
+    team_p.set_defaults(func=_handle_run_team)
 
     args = parser.parse_args()
 
