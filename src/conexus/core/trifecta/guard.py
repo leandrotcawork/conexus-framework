@@ -14,7 +14,7 @@ class TrifectaGuard:
         self,
         tool_tags: dict[str, str],
         *,
-        trust_boundary_cleared: bool = False,
+        trust_boundary_cleared: str | None = None,
         seed_taint: set[DataClass] | None = None,
     ) -> None:
         self._tool_tags: dict[str, DataClass] = {}
@@ -23,8 +23,14 @@ class TrifectaGuard:
                 self._tool_tags[name] = DataClass(tag)
             except ValueError:
                 pass  # invalid tag string — caught at check time
-        self._trust_cleared = trust_boundary_cleared
+        self._trust_cleared: str | None = trust_boundary_cleared
         self._taint: set[DataClass] = set(seed_taint) if seed_taint else set()
+
+    def clear_boundary(self, reason: str) -> None:
+        """Operator-level trust-boundary clear. Reason is required; logged by caller."""
+        if not reason or not reason.strip():
+            raise ValueError("clear_boundary requires non-empty reason")
+        self._trust_cleared = reason
 
     @classmethod
     def from_handoff(cls, tool_tags: dict[str, str], handoff) -> "TrifectaGuard":
@@ -50,7 +56,7 @@ class TrifectaGuard:
 
         if (
             tag == DataClass.external_write
-            and not self._trust_cleared
+            and self._trust_cleared is None
             and DataClass.untrusted_read in self._taint
             and DataClass.private_read in self._taint
         ):

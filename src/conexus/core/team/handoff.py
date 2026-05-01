@@ -1,7 +1,7 @@
 """Handoff — typed, versioned payload passed between agents in a team."""
 from __future__ import annotations
 from typing import Any, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from conexus.core.trifecta.tags import DataClass
 
 
@@ -19,7 +19,17 @@ class Handoff(BaseModel):
     hop_count: int = 0
     max_hops: int = 5
     tags: set[DataClass] = Field(default_factory=set)
-    trust_boundary_cleared: bool = False
+    trust_boundary_cleared: str | None = None
+
+    @field_validator("trust_boundary_cleared", mode="before")
+    @classmethod
+    def _coerce_legacy_bool(cls, v):
+        """Phase 8 persisted bool True/False; replay must accept both."""
+        if v is True:
+            return "legacy:phase-8"
+        if v is False:
+            return None
+        return v
 
     def next_hop(self, to_agent: str) -> "Handoff":
         new_count = self.hop_count + 1

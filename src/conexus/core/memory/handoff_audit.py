@@ -35,7 +35,7 @@ def record_handoff(conn: sqlite3.Connection, h: Handoff, outcome: str) -> None:
             h.to_agent,
             h.hop_count,
             json.dumps(sorted(t.value for t in h.tags)),
-            int(h.trust_boundary_cleared),
+            int(h.trust_boundary_cleared is not None),
             h.model_dump_json(),
             outcome,
         ),

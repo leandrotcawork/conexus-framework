@@ -11,7 +11,7 @@ def test_handoff_default_shape():
     assert h.hop_count == 0
     assert h.max_hops == 5
     assert h.tags == set()
-    assert h.trust_boundary_cleared is False
+    assert h.trust_boundary_cleared is None
 
 
 def test_handoff_carries_taint():
