@@ -41,7 +41,7 @@
       "id": "phase-9",
       "name": "Phase 9 — Multi-Agent Runtime Activation + Replay + MCPProducer",
       "status": "planned",
-      "plan": null,
+      "plan": "docs/superpowers/plans/2026-04-30-phase-9-runtime-replay-mcp.md",
       "tasks": [
         {
           "id": "T-028",
