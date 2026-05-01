@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TeamBudget(BaseModel):
@@ -16,7 +16,15 @@ class TeamPolicy(BaseModel):
     trifecta_enforcement: Literal["strict", "warn", "off"] = "strict"
     max_hops: int = 5
     max_turns: int = 20
+    max_parallel_members: int = 1
     termination_text: str = "DONE"
+
+    @field_validator("max_parallel_members")
+    @classmethod
+    def _check_at_least_one(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("max_parallel_members must be >= 1")
+        return v
 
 
 class TeamPackFrontmatter(BaseModel):
