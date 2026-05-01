@@ -47,3 +47,4 @@ packages = ["src/conexus"]
 testpaths = ["tests", "src/conexus/tests", "agents/ana/tests", "agents/pesquisador/tests"]
 pythonpath = [".", "src"]
 asyncio_mode = "auto"
+markers = ["slow: marks tests that build wheels or create venvs (run with -m slow)"]
