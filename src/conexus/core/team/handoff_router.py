@@ -22,9 +22,16 @@ from conexus.core.team.team_registry import TeamRegistry
 
 
 class HandoffRouter:
-    def __init__(self, registry: TeamRegistry, conn: sqlite3.Connection | None = None) -> None:
+    def __init__(
+        self,
+        registry: TeamRegistry,
+        conn: sqlite3.Connection | None = None,
+        *,
+        session_id: str = "legacy",
+    ) -> None:
         self._reg = registry
         self._conn = conn
+        self._session_id = session_id
 
     def route(self, handoff: Handoff) -> str:
         try:
@@ -53,7 +60,7 @@ class HandoffRouter:
     def _audit(self, handoff: Handoff, outcome: str) -> None:
         if self._conn is None:
             return
-        record_handoff(self._conn, handoff, outcome)
+        record_handoff(self._conn, handoff, outcome, session_id=self._session_id)
 
     @staticmethod
     def _eval(expr: str, payload: dict[str, Any]) -> bool:
