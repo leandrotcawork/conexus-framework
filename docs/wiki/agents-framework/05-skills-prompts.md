@@ -16,6 +16,11 @@ A **Skill** is a directory. The only required file is `SKILL.md`, which must ope
 
 **Phase 7 addition:** `SKILL.md` now also accepts a `skills:` list of sub-skill references (see `src/conexus/core/config/skill_loader.py:46`). Each entry names a `SKILL_PACK` directory under `agents/<name>/skills/<pack-name>/SKILL_PACK.md`. The `SkillLoader` (see `src/conexus/core/skills/skill_resolver.py`) resolves these at startup, registers the appropriate backend (`PythonBackend` or `McpStdioBackend`), merges `data_classes` tags for `TrifectaGuard`, and injects any prompt fragments from the pack body into the agent's system prompt.
 
+**Phase 8 addition — `AgentHandlerConfig` cross-agent fields** (`src/conexus/core/agent_handler.py:39`):
+
+- `incoming_handoff: object | None = None` — carries the `Handoff` object when the agent is being invoked as the target of a cross-agent handoff. Typed as `object` to avoid an import cycle at the dataclass definition site; `handle_agent_message` downcasts it inside the function body.
+- Three-branch `TrifectaGuard` creation in `handle_agent_message` (`src/conexus/core/agent_handler.py:61`): (1) `tool_tags is None` → guard disabled; (2) `incoming_handoff is not None` → `TrifectaGuard.from_handoff(tool_tags, handoff)` — inherits sender taint + trust flag; (3) otherwise → `TrifectaGuard(tool_tags)` — fresh single-agent turn guard.
+
 ```
 agents/ana/
 ├── SKILL.md           # required — persona + frontmatter; may list `skills: [wiki@1.0]`

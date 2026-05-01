@@ -253,3 +253,157 @@ Proven multi-agent recipes. Each maps cleanly onto one of the topologies in §3.
 ---
 
 **One-line takeaway:** Conexus should keep Ana and Isaac single-agent, add one function-call handoff with a typed Pydantic contract and a `trace_id` the day they must cooperate, and not import a multi-agent framework until the topology is too complex to draw on a napkin.
+
+---
+
+## 13. Conexus Phase 8 — TEAM_PACK runtime (shipped 2026-04-30)
+
+> Status: implemented. Everything in this section is verified against `src/conexus/core/team/` at commit range d476101–6235bc8.
+
+Phase 8 delivered the first real inter-agent substrate: a declarative team manifest format, runtime routing, budget enforcement, and audit. No existing single-agent behaviour changed — all new code is additive.
+
+### 13.1 TEAM_PACK.md — the manifest format
+
+A team is declared as a markdown file with YAML frontmatter. The reference pack lives at `agents/teams/product_team/TEAM_PACK.md`. The parser is `parse_team_pack()` (`src/conexus/core/team/team_pack.py:41`), which splits on `---` and passes the first YAML block to `TeamPackFrontmatter`.
+
+**`TeamPackFrontmatter` fields** (`src/conexus/core/team/team_pack.py:22`):
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | `str` | yes | Team identifier |
+| `version` | `str` | yes | Semver string |
+| `manager` | `str \| None` | no | Agent name; must be in `members` if set |
+| `members` | `list[str]` | yes | All agent names on the team |
+| `edges` | `list[dict]` | no | Explicit routing edges (see §13.3) |
+| `budget` | `TeamBudget` | yes | Pool + per-member shares |
+| `policy` | `TeamPolicy` | no | Defaults: `trifecta_enforcement=strict`, `max_hops=5`, `max_turns=20` |
+| `deployment` | `dict[str, str]` | no | Per-member deploy hints (`cloud`, `local`) |
+
+**`TeamBudget`** (`src/conexus/core/team/team_pack.py:9`): `team_daily_usd: float`, `shares: dict[str, float]` (must sum to 1.0), `on_share_exceeded: Literal["notify", "halt_member", "borrow_from_pool"]`.
+
+**`TeamPolicy`** (`src/conexus/core/team/team_pack.py:14`): `trifecta_enforcement`, `max_hops`, `max_turns`, `termination_text`.
+
+### 13.2 TeamLoader — validation at load time
+
+`TeamLoader(available_agents: set[str]).load(pack_path)` (`src/conexus/core/team/team_loader.py:7`) validates:
+
+1. Every member in `members` exists in `available_agents` — fails fast with `ValueError("unknown member: <name>")`.
+2. If `manager` is set, it must appear in `members`.
+3. `budget.shares` must sum to 1.0 (tolerance ±0.01).
+4. No share entry for an agent not in `members`.
+
+Returns `TeamPackDocument` (frontmatter + body + pack_dir).
+
+### 13.3 TeamRegistry — runtime view
+
+`TeamRegistry(doc: TeamPackDocument)` (`src/conexus/core/team/team_registry.py:7`) is a thin runtime wrapper exposing:
+
+- `.members` — `list[str]`
+- `.manager` — `str | None`
+- `.policy` — `TeamPolicy`
+- `.budget` — `TeamBudget`
+- `.has_member(name)` — bool
+- `.edges_from(agent)` — list of edge dicts where `from == agent`
+
+### 13.4 Handoff — the typed cross-agent envelope
+
+`Handoff` (`src/conexus/core/team/handoff.py:8`) is a frozen Pydantic model. Fields:
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `schema_version` | `Literal["1"]` | `"1"` | Schema guard |
+| `from_agent` | `str` | required | Sending agent |
+| `to_agent` | `str` | required | `"auto"` triggers router resolution |
+| `payload` | `dict[str, Any]` | `{}` | Arbitrary task data |
+| `context_mode` | `Literal["full", "last_message", "summary"]` | `"summary"` | History forwarding policy |
+| `return_on` | `str \| None` | `None` | Agent name to return result to |
+| `hop_count` | `int` | `0` | Incremented by `next_hop()` |
+| `max_hops` | `int` | `5` | Hard limit; `next_hop()` raises at breach |
+| `tags` | `set[DataClass]` | `set()` | Trifecta taint to seed in receiver |
+| `trust_boundary_cleared` | `bool` | `False` | Bypasses Trifecta exfil rule in receiver |
+
+`Handoff.next_hop(to_agent)` produces an immutable copy with `hop_count + 1`, new `from_agent` / `to_agent`, and raises `ValueError` if `max_hops` would be exceeded (see `src/conexus/core/team/handoff.py:24`).
+
+### 13.5 HandoffRouter — four-step resolution
+
+`HandoffRouter(registry: TeamRegistry).route(handoff: Handoff) -> str` (`src/conexus/core/team/handoff_router.py:20`) resolves the destination agent in this order:
+
+1. **Explicit target.** If `to_agent != "auto"` and the agent is a valid member, return it directly.
+2. **`auto: true` edge.** First edge from `edges_from(handoff.from_agent)` with `auto: true` — short-circuits remaining checks.
+3. **`when` edge.** First edge where the `when` expression evaluates truthy against `handoff.payload` (Python `eval` with `{"__builtins__": {}}` and a `task` proxy binding `payload["task"]`).
+4. **Manager fallback.** If `registry.manager` is set, return it.
+5. **Raise.** `ValueError("no edge match and no manager")`.
+
+The `when` expression sandboxing is intentionally minimal — edges are author-controlled, committed in the repo; the threat model is "developer shoots own foot", not untrusted input reaching eval (see `src/conexus/core/team/handoff_router.py:36`).
+
+### 13.6 BudgetCascader — pool + share enforcement
+
+`BudgetCascader(team_daily_usd, shares, policy)` (`src/conexus/core/team/budget_cascader.py:19`) tracks per-member spend against a shared pool. Three policies (matching `TeamBudget.on_share_exceeded`):
+
+- **`notify`** — `check_and_debit()` returns `False` when share exceeded; caller decides how to signal the user. No halt.
+- **`halt_member`** — member is added to `_halted`; subsequent calls raise `ShareExceeded`. Permanent within the `BudgetCascader` instance lifetime.
+- **`borrow_from_pool`** — if the team pool has remaining headroom, the over-share cost is charged anyway; returns `False` only when the pool itself is exhausted.
+
+`pool_remaining()` is the sum of all member spend subtracted from `team_daily_usd`.
+
+### 13.7 Handoff audit — SQLite persistence
+
+`src/conexus/core/memory/handoff_audit.py` ships a minimal audit table:
+
+```sql
+CREATE TABLE IF NOT EXISTS handoff_audit (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts            TEXT NOT NULL,
+  from_agent    TEXT NOT NULL,
+  to_agent      TEXT NOT NULL,
+  hop_count     INTEGER NOT NULL,
+  tags          TEXT NOT NULL,
+  trust_cleared INTEGER NOT NULL,
+  payload_json  TEXT NOT NULL,
+  outcome       TEXT NOT NULL
+);
+```
+
+`init_handoff_audit(conn)` creates the table; `record_handoff(conn, handoff, outcome)` inserts one row per routed handoff. The `tags` column is a JSON array of `DataClass` values (sorted strings). `payload_json` is the full `handoff.model_dump_json()`.
+
+### 13.8 Cross-agent TrifectaGuard integration
+
+Phase 8 extended `TrifectaGuard` (`src/conexus/core/trifecta/guard.py`) with two new capabilities:
+
+**`seed_taint` kwarg** (`guard.py:13`): pre-populates the turn's taint set before any tool call. Used when a receiving agent should inherit the sender's accumulated taint so the cross-agent boundary does not reset the Trifecta clock.
+
+**`TrifectaGuard.from_handoff(tool_tags, handoff)` classmethod** (`guard.py:30`): constructs a guard for a receiving agent turn by reading `handoff.tags` as `seed_taint` and `handoff.trust_boundary_cleared` as the bypass flag. This is the canonical factory when an agent is invoked via a `Handoff`.
+
+**Three-branch guard creation in `handle_agent_message`** (`src/conexus/core/agent_handler.py:61`):
+
+```python
+if cfg.tool_tags is None:
+    guard = None                                          # guard disabled
+elif cfg.incoming_handoff is not None:
+    guard = TrifectaGuard.from_handoff(cfg.tool_tags, cfg.incoming_handoff)
+elif ...:
+    guard = TrifectaGuard(cfg.tool_tags)                 # normal single-agent turn
+```
+
+The `incoming_handoff` field on `AgentHandlerConfig` (`src/conexus/core/agent_handler.py:40`) carries the `Handoff` object; it is typed as `object | None` to avoid an import cycle at the dataclass definition site.
+
+### 13.9 `conexus run-team` CLI subcommand
+
+`conexus run-team <pack> [--available-agents <csv>]` (`src/conexus/cli/__main__.py:102`) validates a TEAM_PACK against a list of available agents and prints the loaded team name + member list. It is a dry-run validator, not a full team executor — the execution loop is future work.
+
+### 13.10 Reference team pack
+
+`agents/teams/product_team/TEAM_PACK.md` is the canonical example: a 3-member team (`ana`, `pm`, `researcher`), `pm` as manager, edges `ana→pm` (when `task.kind == 'plan'`), `pm→researcher` (when `task.kind == 'research'`), `researcher→pm` (auto), budget pool $1.00/day with shares 20/40/40.
+
+### 13.11 Coordination hazard mitigations (Phase 8 update)
+
+The hazard table in §8 is partially implemented now:
+
+| Hazard | Phase 8 mitigation |
+|---|---|
+| Infinite handoff loops | `Handoff.max_hops` (default 5); `next_hop()` raises at breach (`src/conexus/core/team/handoff.py:27`) |
+| Budget blowout | `BudgetCascader` with `halt_member` / `borrow_from_pool` policies (`src/conexus/core/team/budget_cascader.py`) |
+| Cross-agent exfil (Trifecta) | `Handoff.tags` + `trust_boundary_cleared` + `TrifectaGuard.from_handoff()` propagate taint across the boundary |
+| Missing audit trail | `handoff_audit` SQLite table; `record_handoff()` called per route decision |
+
+Hazards without Phase 8 mitigation (still open): redundant work, context bloat, authority conflicts, silent divergence, stale state.

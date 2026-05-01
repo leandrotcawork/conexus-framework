@@ -48,7 +48,7 @@
 | 03 | [[03-tool-integration]] | Auto-schema from type hints, manual `_tool_schemas` descriptions | Unknown types → silent `string`; no Literal/Enum/Pydantic; no `strict:true` / `additionalProperties:false`; no output schema; no SSRF guard in `web_fetch` | **H** | S-M | Expand `_type_to_schema`; add `strict`; parse docstrings for descriptions; allowlist scheme/host in `pesquisador.tools.web_fetch` |
 | 04 | [[04-memory-systems]] | Chat_history (last 10), facts KV, wiki | No rolling summary past 10 msgs; no core-memory block; no Mem0-style extractor; no episodic log separate from chat | **H** | M | Add `conversation_summary` column; rolling compaction job; `memory_core` fact namespace injected verbatim in system prompt |
 | 05 | [[05-context-engineering]] | System prompt = goal + body + protocol; timestamp appended per call; facts + 10-msg history in one user message | No `cache_control` markers; timestamp in system breaks stable prefix; no XML/section delimiters; no progressive-disclosure for large tool outputs | **H** | S | Move timestamp to a trailing user message; add Anthropic 4-breakpoint `cache_control`; wrap history/facts in `<chat_history>`/`<facts>` tags |
-| 06 | [[06-multi-agent-orchestration]] | Two agents in one process, no cross-talk | No handoff tool, no supervisor, no `trace_id` propagation — each agent's telemetry is a separate island | M | M | Keep two-agent shape; add `trace_id` contextvar now (cheap) so future handoffs are traceable; skip supervisor until there's a third agent |
+| 06 | [[06-multi-agent-orchestration]] | Two agents in one process, no cross-talk; **Phase 8:** `Handoff` + `TeamRegistry` + `HandoffRouter` + `BudgetCascader` + `handoff_audit` shipped | No supervisor execution loop yet; `trace_id` propagation still pending; no live fan-out between real agents | M | M | Keep two-agent shape; add `trace_id` contextvar; skip supervisor execution loop until there's a concrete use-case |
 | 07 | [[07-rag-retrieval]] | `WikiStore.search` = `str.__contains__` over every file; no chunking, no ranking | No BM25, no hybrid, no rerank, no frontmatter-aware chunking, no embedding store | **H** | M | Phase A: BM25 over Markdown paragraphs with frontmatter metadata filter; Phase B: sqlite-vec + cross-encoder rerank if Phase A insufficient |
 | 08 | [[08-planning-reasoning]] | Pure ReAct, temperature 0.4 Ana / 0.2 Pesq | No Plan-and-Execute / ReWOO / Reflexion; no explicit "plan first" scratchpad | L | S | Optional — add a "plan" system-prompt instruction for Pesquisador compile_article path only |
 | 09 | [[09-observability-evaluation]] | `llm_usage` table, `/uso` command | No OTel/Langfuse, no per-tool span, no trace_id, no eval harness, no golden set, no drift monitoring | **H** | M | Add `trace_id` now; minimal promptfoo golden set in CI; defer full OTel export until a second operator shows up |
@@ -202,9 +202,29 @@ The following items were delivered in Phase 7 (v2 spec §1.3, §1.4, §1.8) and 
 
 - **ToolBackend abstraction.** `src/conexus/core/backends/{base,python_backend,mcp_stdio_backend}.py`. `AgentRegistry` routes through `ToolBackend.execute()`; `register(agent, tools_obj)` backward-compat preserved. Fixes the `json.dumps` without `default=str` bug as a side-effect (`PythonBackend.execute():20` uses `default=str`). **Done.**
 - **SKILL_PACK format + SkillLoader.** `src/conexus/core/skills/{pack_loader,skill_resolver}.py`; `skills:` field on `SkillFrontmatter`. Pip-installable skill packages with `python` or `mcp-stdio` backends. `SkillLoader._load_module` tightened to require `v.__module__ == mod.__name__` so imported third-party classes are not mistakenly picked up as tools. **Done.**
-- **TrifectaGuard.** `src/conexus/core/trifecta/{tags,guard}.py`; `tool_tags` field on `AgentHandlerConfig`; guard hook in tool-call loop (`src/conexus/core/agent_handler.py:135-145`). Deterministic lethal-trifecta exfil prevention. Opt-in; off when `tool_tags is None`. **Done.**
-- **`conexus tag suggest` CLI command.** `src/conexus/cli/__main__.py:102`. Prints `auto_tag()` heuristic results for every public method in a tools.py file. **Done.**
+- **TrifectaGuard.** `src/conexus/core/trifecta/{tags,guard}.py`; `tool_tags` field on `AgentHandlerConfig`; guard hook in tool-call loop (`src/conexus/core/agent_handler.py:141-151`). Deterministic lethal-trifecta exfil prevention. Opt-in; off when `tool_tags is None`. **Done.**
+- **`conexus tag suggest` CLI command.** `src/conexus/cli/__main__.py:114`. Prints `auto_tag()` heuristic results for every public method in a tools.py file. **Done.**
 - **102 new tests.** `src/conexus/tests/test_framework_{pack_loader,trifecta,backends,trifecta_integration}.py`. All pass; ruff clean on `src/conexus/`. **Done.**
+
+### Phase 8 additions (2026-04-30, completed)
+
+The following items were delivered in Phase 8 (v2 spec team layer, commits d476101–6235bc8):
+
+- **`Handoff` model.** `src/conexus/core/team/handoff.py`. Frozen Pydantic model with `schema_version`, `from_agent`, `to_agent`, `payload`, `context_mode`, `return_on`, `hop_count`, `max_hops`, `tags`, `trust_boundary_cleared`. `next_hop()` enforces `max_hops` hard limit. **Done.**
+- **`TEAM_PACK.md` format + `parse_team_pack()`.** `src/conexus/core/team/team_pack.py`. `TeamPackFrontmatter` / `TeamBudget` / `TeamPolicy` Pydantic models; parser splits `---` frontmatter. **Done.**
+- **`TeamLoader`.** `src/conexus/core/team/team_loader.py`. Validates members against available agents, manager in members, `budget.shares` sum to 1.0. **Done.**
+- **`TeamRegistry`.** `src/conexus/core/team/team_registry.py`. Runtime view: `members`, `manager`, `policy`, `budget`, `edges_from()`. **Done.**
+- **`HandoffRouter`.** `src/conexus/core/team/handoff_router.py`. Four-step resolution: explicit → `auto` edge → `when` edge → manager fallback → raise. `when` expressions are Python `eval` sandboxed against `{"__builtins__": {}}`. **Done.**
+- **`BudgetCascader`.** `src/conexus/core/team/budget_cascader.py`. Per-member share enforcement against a shared pool; `notify` / `halt_member` / `borrow_from_pool` policies; `ShareExceeded` on halted member. **Done.**
+- **Handoff audit table.** `src/conexus/core/memory/handoff_audit.py`. `handoff_audit` SQLite table; `init_handoff_audit()` + `record_handoff()`. **Done.**
+- **Multi-backend `list_tools()` contract.** `ToolBackend.list_tools()` now abstract (`src/conexus/core/backends/base.py:13`); `AgentRegistry.execute_tool()` routes via `list_tools()` with collision detection (`src/conexus/core/agent_registry.py:41`); `McpStdioBackend` populates `_tool_names` from `tools/list` response at `start()` time (`src/conexus/core/backends/mcp_stdio_backend.py:33`). **Done.**
+- **Cross-agent TrifectaGuard: `seed_taint` + `from_handoff`.** `src/conexus/core/trifecta/guard.py:13,30`. Taint propagates across handoff boundary; `trust_boundary_cleared` bypasses the exfil rule for explicitly-audited cross-agent paths. **Done.**
+- **`incoming_handoff` on `AgentHandlerConfig`.** `src/conexus/core/agent_handler.py:40`. Three-branch guard creation in `handle_agent_message` at line 61. **Done.**
+- **`conexus run-team` CLI subcommand.** `src/conexus/cli/__main__.py:102`. Dry-run validator for TEAM_PACK. **Done.**
+- **Reference team pack.** `agents/teams/product_team/TEAM_PACK.md`. 3-member `product_team` with manager `pm`. **Done.**
+- **Tests.** `test_framework_team_{handoff,pack,registry,router,budget,trifecta,integration}.py` + `test_framework_cli.py`. All pass. **Done.**
+
+Remaining open gaps from the original punch list that Phase 8 did **not** close: multi-backend routing adds `list_tools()` but the `tools/list` auto-registration gap from §4.11 is now closed for `McpStdioBackend` (it calls `tools/list` at `start()`). The supervisor execution loop (running agents sequentially through `handle_agent_message`) and `trace_id` propagation remain future work.
 
 ---
 
@@ -212,7 +232,7 @@ The following items were delivered in Phase 7 (v2 spec §1.3, §1.4, §1.8) and 
 
 - **Postgres migration.** [[10 §11]] ladder: single-process SQLite is correct until (a) `database is locked` errors appear under sustained load, (b) a second operator wants their own instance, or (c) multiple Fly machines become necessary. None applies. Deferring until *any* of the three triggers.
 - **LangGraph / Temporal / DBOS durable workflows.** [[02-frameworks-survey]] + [[10 §4]] agree these pay off when "debugging what the agent did three hours ago" becomes a weekly task. With two agents and one operator, `ping_log` + a `tool_audit` table (punch-list #10) provides 90 % of the forensic value at 5 % of the operational overhead. Revisit if a third agent is added or if crash-mid-tool-call becomes a recurring incident.
-- **Real multi-agent orchestration (supervisor / swarm).** [[06-multi-agent-orchestration]] patterns exist for cross-agent delegation. Conexus has two agents that do not talk to each other, by design — Ana owns reactive user-facing work, Pesquisador owns proactive knowledge-base maintenance. Handoffs (Ana → Pesquisador "research this for me") are the one plausible future feature; until there's a concrete use-case, `trace_id` propagation (punch-list #3) is the only prep work worth doing.
+- **Real multi-agent orchestration (supervisor / swarm).** [[06-multi-agent-orchestration]] patterns exist for cross-agent delegation. The Phase 8 substrate (`Handoff`, `HandoffRouter`, `BudgetCascader`, `TeamRegistry`, `handoff_audit`) is now in place. What remains deferred is the execution loop that calls `handle_agent_message` for each hop — and wiring Ana + Pesquisador into a live `TEAM_PACK`. Until there is a concrete use-case that requires both agents to cooperate in a single trace, the supervisor loop stays future work.
 - **Letta / stateful-agent-server model.** [[04-memory-systems]] + [[10 §4]]. Flips client/server so the server owns memory. Overkill for a single-user Telegram bot where the "client" is always the same process and state lives on one Fly volume. The pieces we'd copy (self-editing core block, archival memory) can land as SQLite tables without adopting Letta.
 - **Full OTel / Langfuse self-hosted.** [[09-observability-evaluation]]. Requires either Docker-compose on a second Fly app or SaaS. Solo-operator threshold says "add when something breaks and you can't reconstruct it from logs"; `llm_usage` + the proposed `tool_audit` table + `trace_id` cover reconstruction. Defer.
 - **Cross-encoder rerank + vector store.** [[07-rag-retrieval]] Phase B. Only justified if BM25 (punch-list #17) produces visible precision complaints.
@@ -221,4 +241,4 @@ The following items were delivered in Phase 7 (v2 spec §1.3, §1.4, §1.8) and 
 
 ---
 
-*Last updated: 2026-04-30 (Phase 7 complete). Cite partitions as `[[NN-partition-name]]`. When a punch-list item lands, link its PR in the line above and strike through the title.*
+*Last updated: 2026-04-30 (Phase 8 complete). Cite partitions as `[[NN-partition-name]]`. When a punch-list item lands, link its PR in the line above and strike through the title.*

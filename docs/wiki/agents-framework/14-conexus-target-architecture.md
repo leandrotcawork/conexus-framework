@@ -19,7 +19,7 @@ After the plan in this document is executed, Conexus is:
 - **Observable end-to-end**: every turn has a `trace_id`; every LLM call and tool call is a span; OTel GenAI conventions at the wire; Langfuse (self-hosted) or SQLite as the span store.
 - **Evaluated on every push**: a promptfoo + DeepEval golden set gates merges. New prompts don't ship blind.
 - **Memory-layered, not memory-flat**: short-term (rolling summary), episodic (turn log), semantic (BM25 + sqlite-vec hybrid wiki retrieval with optional rerank), procedural (`SKILL.md`), consolidated nightly by a sleep-time job.
-- **Multi-agent-ready but not multi-agent-yet**: typed `Handoff` primitive and `trace_id` propagation are in place; supervisor / swarm topologies are deliberately deferred.
+- **Multi-agent substrate in place (Phase 8)**: `Handoff`, `HandoffRouter`, `BudgetCascader`, `TeamRegistry`, and `handoff_audit` are shipped; the supervisor execution loop and `trace_id` propagation are the remaining gaps before live cross-agent execution.
 - **Interoperable at the edges**: an `MCPAdapter` so `AgentRegistry` can expose tools to Claude Desktop, and so external MCP servers (search, fetch, filesystem) can be consumed without bespoke code.
 
 ---
@@ -36,7 +36,7 @@ After the plan in this document is executed, Conexus is:
 8. **Tool outputs are paginated, not truncated.** An opaque `page_cursor` is the contract; `"…[truncado]"` is a bug. ([[12 §5]].)
 9. **Every LLM call goes through `TrackedLLM`.** No direct `litellm.acompletion`. Voice transcription is a call too. This is the invariant the usage tracker, the budget cap, and the tracer all depend on.
 10. **Scheduled jobs are forensic artifacts.** `ping_log` is tri-state (`pending`/`sent`/`failed`), every job writes an audit row, no at-least-once drift into at-most-once by accident.
-11. **Agents don't talk to each other yet.** Two-agent isolated-peers is the current topology by design; the only cross-agent primitive we build now is `trace_id` propagation so the future `ask_isaac` handoff is one-column-join away.
+11. **Agents don't execute handoffs yet, but the substrate is in place.** Phase 8 shipped `Handoff`, `HandoffRouter`, `TeamRegistry`, `BudgetCascader`, and `handoff_audit`. What remains is the execution loop that drives `handle_agent_message` per hop and wires real agents into a live `TEAM_PACK`. `trace_id` propagation across hops is still pending.
 12. **Git is the undo log.** Wiki writes are commits; memory consolidation is a commit; audit is `git log`. We do not build a parallel history store.
 
 ---
@@ -188,8 +188,20 @@ See §8.
 ### `core/evals/runner.py` — **new** (and `evals/` directory)
 See §8.
 
-### `core/handoff.py` — **new, scaffold only**
-See §8. Used by zero agents today; lands so the contract is stable when Ana grows an `ask_isaac` tool.
+### `core/team/` — **new (Phase 8, shipped)**
+
+The scaffold landed as a full team substrate, not just a `Handoff` model. Key modules (all under `src/conexus/core/team/`):
+
+- `handoff.py` — frozen `Handoff` Pydantic model with hop tracking, taint propagation fields, and `next_hop()`.
+- `team_pack.py` — `TeamPackFrontmatter` / `TeamBudget` / `TeamPolicy` + `parse_team_pack()`.
+- `team_loader.py` — `TeamLoader(available_agents).load(pack_path)` validates members, manager, and budget shares.
+- `team_registry.py` — runtime view: `members`, `manager`, `policy`, `budget`, `edges_from()`.
+- `handoff_router.py` — `HandoffRouter.route(handoff)` with 4-step resolution.
+- `budget_cascader.py` — `BudgetCascader` with `notify` / `halt_member` / `borrow_from_pool`.
+
+Audit: `src/conexus/core/memory/handoff_audit.py` — `handoff_audit` SQLite table.
+
+The `core/handoff.py` path described in the original §8 spec was not used; the implementation landed under `core/team/handoff.py` instead.
 
 ### `main.py` — **evolves**
 Stays: skill → LLM → tools → registry → bot wiring.
@@ -345,20 +357,16 @@ Effort: **~7 days.**
 
 ### Phase 5 — Multi-agent foundation (3–5 days, scaffold only)
 
-**Goal.** The contracts for future handoffs exist, so adding a third agent is YAML + one tool.
+> **Superseded by Phase 8.** The full substrate (`Handoff`, `HandoffRouter`, `TeamRegistry`, `BudgetCascader`, `handoff_audit`) shipped in Phase 8 under `src/conexus/core/team/`. What Phase 5 originally specified as a minimal scaffold is now a complete routing layer. What remains from Phase 5's intent is wiring the execution loop (calling `handle_agent_message` per hop) and `trace_id` propagation across agent boundaries.
 
-Changes:
-- `core/handoff.py`: typed `Handoff` Pydantic model and `HandoffRegistry`.
-- `ask_isaac` / `ask_pesquisador` as generated tools; uses the same `trace_id` via ContextVar copy.
+**Original goal.** The contracts for future handoffs exist, so adding a third agent is YAML + one tool.
+
+Remaining work:
+- Supervisor execution loop: iterate `HandoffRouter.route()` → `handle_agent_message()` per hop, share `trace_id`.
+- `ask_isaac` / `ask_pesquisador` as generated tools that produce a `Handoff` and enter the loop.
 - Trace propagation: handoff spans parent to the originator's trace.
 
-Files touched: `core/handoff.py` (new), `core/agent_registry.py` (extended), `main.py` (handoff wiring).
-
-Acceptance:
-- Dummy test agent hands off to another dummy agent; both turns share a `trace_id`; span tree makes sense in Langfuse.
-- No change to Ana or Pesquisador SKILL.md required unless they opt-in.
-
-Effort: **~4 days.**
+Effort: **~2 days** (substrate already in place).
 
 > **Phases 0–5 above complete the kernel.** The v2 spec
 > (`docs/superpowers/specs/2026-04-29-conexus-framework-v2.md`) picks up from here with:
@@ -367,7 +375,7 @@ Effort: **~4 days.**
 > |-------|------|--------|
 > | 6 | Framework / consumer split — `conexus` becomes a pip package; Ana + Pesquisador become consumers | Done (commit 5c5162e) |
 > | 7 | `SKILL_PACK` format + `TrifectaGuard` (deterministic taint check) + `ToolBackend` abstraction + MCP-stdio consume | **Done** (commit 80dba33 + 16f864f). See `src/conexus/core/skills/`, `src/conexus/core/trifecta/`, `src/conexus/core/backends/`. |
-> | 8 | `TEAM_PACK` + `BudgetCascader` + `HandoffRouter` + cross-agent TrifectaGuard | Future |
+> | 8 | `TEAM_PACK` + `BudgetCascader` + `HandoffRouter` + cross-agent TrifectaGuard | **Done** (commits d476101–6235bc8). See `src/conexus/core/team/`, `src/conexus/core/memory/handoff_audit.py`. |
 > | 9 | `MCPProducer` (bearer auth) — expose Conexus to Claude Code / Cursor | Future |
 >
 > This document governs Phases 0–5 only. The v2 spec governs Phases 6–9.
@@ -428,15 +436,26 @@ class ModelCascade:
 ```
 Wraps router-level fallback; used today by Pesquisador's Flash→Pro split. Escalation predicates: low-confidence heuristic, explicit tool request, length > threshold.
 
-### `Handoff` — `core/handoff.py`
+### `Handoff` — `src/conexus/core/team/handoff.py` (Phase 8, shipped)
+
+The original spec sketch was superseded by the Phase 8 implementation. The actual model is:
+
 ```python
 class Handoff(BaseModel):
-    target_agent: str
-    reason: str
+    model_config = ConfigDict(frozen=True)
+    schema_version: Literal["1"] = "1"
+    from_agent: str
+    to_agent: str         # "auto" triggers HandoffRouter
     payload: dict[str, Any] = Field(default_factory=dict)
-    parent_trace_id: str
+    context_mode: Literal["full", "last_message", "summary"] = "summary"
+    return_on: str | None = None
+    hop_count: int = 0
+    max_hops: int = 5
+    tags: set[DataClass] = Field(default_factory=set)
+    trust_boundary_cleared: bool = False
 ```
-Used by `handle_agent_message` when a tool returns `{"__handoff__": Handoff(...)}`. Registry enqueues the target agent's handler with shared `trace_id`.
+
+Carried on `AgentHandlerConfig.incoming_handoff`; `handle_agent_message` uses `TrifectaGuard.from_handoff()` when it is set.
 
 ### `MCPAdapter` — `core/tools/mcp_adapter.py`
 See §4.
@@ -490,7 +509,7 @@ All of:
 - [ ] Morning briefing runs via Batch API; per-day cost falls ≥ 40% vs. pre-Phase 3 baseline.
 - [ ] `/healthz` returns 200 with component statuses.
 - [ ] MCP adapter exposes wiki to Claude Desktop end-to-end.
-- [ ] `Handoff` primitive exists with a passing round-trip test between two dummy agents.
+- [x] `Handoff` primitive + `HandoffRouter` + `BudgetCascader` + `handoff_audit` exist and are tested (Phase 8). Remaining: execution loop wiring two dummy agents end-to-end with shared `trace_id`.
 - [ ] No `litellm.acompletion` call anywhere outside `TrackedLLM`.
 - [ ] All 15 KPIs in §9 are queryable from SQLite.
 
