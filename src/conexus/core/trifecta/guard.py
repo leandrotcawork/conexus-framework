@@ -15,6 +15,7 @@ class TrifectaGuard:
         tool_tags: dict[str, str],
         *,
         trust_boundary_cleared: bool = False,
+        seed_taint: set[DataClass] | None = None,
     ) -> None:
         self._tool_tags: dict[str, DataClass] = {}
         for name, tag in tool_tags.items():
@@ -23,7 +24,17 @@ class TrifectaGuard:
             except ValueError:
                 pass  # invalid tag string — caught at check time
         self._trust_cleared = trust_boundary_cleared
-        self._taint: set[DataClass] = set()
+        self._taint: set[DataClass] = set(seed_taint) if seed_taint else set()
+
+    @classmethod
+    def from_handoff(cls, tool_tags: dict[str, str], handoff) -> "TrifectaGuard":
+        from conexus.core.team.handoff import Handoff
+        assert isinstance(handoff, Handoff)
+        return cls(
+            tool_tags,
+            trust_boundary_cleared=handoff.trust_boundary_cleared,
+            seed_taint=handoff.tags,
+        )
 
     def check_and_record(self, tool_name: str) -> DataClass:
         """Resolve tag, check rule, record taint. Returns tag. Raises on violation."""

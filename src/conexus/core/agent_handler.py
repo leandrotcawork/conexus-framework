@@ -37,6 +37,7 @@ class AgentHandlerConfig:
     result_max_chars: int | None = None          # truncate oversized tool results
     fallback_msg: str = "Não consegui completar."
     tool_tags: dict[str, str] | None = None  # None = TrifectaGuard disabled
+    incoming_handoff: object | None = None  # Handoff — typed as object to avoid import cycle
 
 
 async def handle_agent_message(
@@ -57,7 +58,12 @@ async def handle_agent_message(
         if not r.allowed:
             return cfg.cap_exceeded_msg
 
-    guard = TrifectaGuard(cfg.tool_tags) if cfg.tool_tags is not None else None
+    if cfg.tool_tags is None:
+        guard = None
+    elif cfg.incoming_handoff is not None:
+        guard = TrifectaGuard.from_handoff(cfg.tool_tags, cfg.incoming_handoff)
+    else:
+        guard = TrifectaGuard(cfg.tool_tags)
 
     now_brt = datetime.now(_BRT)
     history = store.chat_recent(cfg.name, limit=10)
