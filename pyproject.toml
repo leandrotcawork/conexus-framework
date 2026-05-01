@@ -12,6 +12,7 @@ dependencies = [
   "python-dotenv>=1.0",
   "google-api-python-client>=2.130",
   "google-auth>=2.29",
+  "fastmcp>=0.5",
 ]
 
 [dependency-groups]

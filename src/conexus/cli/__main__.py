@@ -99,6 +99,16 @@ def _handle_run_agent(args: argparse.Namespace) -> None:
     asyncio.run(_run_loop(args.name, agents_dir, data_dir))
 
 
+def _handle_mcp_server(args: argparse.Namespace) -> None:
+    import os
+    from conexus.core.mcp.producer import build_mcp_producer
+    token = os.environ.get("CONEXUS_MCP_TOKEN", "")
+    if not token:
+        raise SystemExit("CONEXUS_MCP_TOKEN env var required")
+    server = build_mcp_producer(wiki_root=args.wiki_root, bearer_token=token)
+    server.run(transport="stdio")
+
+
 def _handle_run_team(args) -> int:
     from conexus.core.team.team_loader import TeamLoader
     available = set(filter(None, args.available_agents.split(",")))
@@ -174,6 +184,10 @@ def main() -> None:
     suggest_cmd = tag_sub.add_parser("suggest", help="Print suggested data_classes for a tools.py")
     suggest_cmd.add_argument("tools_file", help="Path to a tools.py file")
     suggest_cmd.set_defaults(func=_handle_tag_suggest)
+
+    mcp_p = sub.add_parser("mcp-server", help="Run Conexus as an MCP server (stdio)")
+    mcp_p.add_argument("--wiki-root", default="./data/wiki")
+    mcp_p.set_defaults(func=_handle_mcp_server)
 
     team_p = sub.add_parser(
         "run-team",
