@@ -23,6 +23,10 @@ reinventing. Not deployed, not agent-facing — this is *our* map.
 | 13 | [conexus-gap-analysis.md](13-conexus-gap-analysis.md) | Current Conexus vs best-in-class — concrete gaps |
 | 14 | [conexus-target-architecture.md](14-conexus-target-architecture.md) | Target design — what we adopt, adapt, or keep |
 | 15 | [future-vision.md](15-future-vision.md) | Direction beyond v2 — marketplace, UI, A2A, signed packs, sandboxing |
+| 16 | [tutorial-create-agent.md](16-tutorial-create-agent.md) | How to create a single agent — SKILL.md, tools.py, tests, CLI REPL, Telegram registration |
+| 17 | [tutorial-create-team.md](17-tutorial-create-team.md) | How to create a team — TEAM_PACK.md, edges, budget cascader, delegate_to, replay |
+| 18 | [tutorial-deploy.md](18-tutorial-deploy.md) | Local dev + Fly.io deployment — env vars, secrets checklist, Dockerfile, volumes, SSH key injection, MCP server |
+| 19 | [tutorial-runtime-flow.md](19-tutorial-runtime-flow.md) | Boot sequence, single-agent loop, tool execution, TrifectaGuard, budget cap, multi-agent stack, audit/replay, extension cookbook |
 
 ## Reading order
 
@@ -31,6 +35,7 @@ Second pass: 03 → 04 → 05 → 07 (core engineering).
 Third pass: 06 → 08 → 09 → 10 → 12 (advanced).
 Synthesis: 13 → 14.
 Direction: 15 (intent only, not commitment).
+Tutorials (ship something): 16 → 17 → 18 → 19.
 
 ## Conventions
 
