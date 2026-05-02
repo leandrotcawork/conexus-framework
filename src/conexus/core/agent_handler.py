@@ -211,17 +211,19 @@ async def handle_team_message(
     )
     from conexus.core.team.handoff import Handoff
     from conexus.core.team.handoff_router import HandoffRouter
+    from conexus.core.team.team_registry import TeamRegistry
     from conexus.core.team.transcript import trim_transcript
     from conexus.core.trifecta.guard import TrifectaGuard, TrifectaViolation
 
     if session_id is None:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
 
+    registry = TeamRegistry(team)
     store.init_db()
     audit_conn: sqlite3.Connection = sqlite3.connect(store.db_path)
     try:
-        router = HandoffRouter(team, conn=audit_conn, session_id=session_id)
-        policy = team.policy
+        router = HandoffRouter(registry, conn=audit_conn, session_id=session_id)
+        policy = registry.policy
         termination_text = policy.termination_text
 
         @dataclass
@@ -252,7 +254,7 @@ async def handle_team_message(
                 cfg=cfg, last_handoff=handoff,
             )
 
-        starter = team.manager or team.members[0]
+        starter = registry.manager or registry.members[0]
         if starter not in configs:
             raise ValueError(f"no AgentHandlerConfig for '{starter}'")
 
