@@ -45,3 +45,6 @@ data/
 wiki_deploy_key*
 wiki_deploy
 wiki_deploy.*
+
+# Superpowers plugin local cache (brainstorm sessions, not source-of-truth)
+.superpowers/
