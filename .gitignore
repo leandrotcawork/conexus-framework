@@ -48,3 +48,10 @@ wiki_deploy.*
 
 # Superpowers plugin local cache (brainstorm sessions, not source-of-truth)
 .superpowers/
+
+# Runtime wiki (SSH-cloned by agent at boot — separate git repo, not tracked here)
+knowledge-wiki/
+
+# Generated artifacts
+docs/*.html
+*.tasks.json
