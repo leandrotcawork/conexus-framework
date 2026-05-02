@@ -1,0 +1,82 @@
+{
+  "planPath": "docs/superpowers/plans/2026-04-16-conexus-framework-phase0.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: Extend SkillFrontmatter",
+      "status": "pending",
+      "description": "**Goal:** Add capabilities, when_to_use, cost_tier, visibility, wiki_root fields + tool list accepts data_class objects.\n\n**Files:**\n- Modify: `core/config/skill_loader.py`\n- Test: `tests/test_skill_loader.py`\n\n**Acceptance Criteria:**\n- SkillFrontmatter accepts new optional fields without breaking existing SKILL.md files\n- tools: list accepts both plain strings and {name, data_class} objects\n- tool_names() returns list[str] for schema_gen compat\n- tool_data_classes() returns dict[str, str | None]\n- All existing test_skill_loader.py tests still pass\n\n**Verify:** `uv run pytest tests/test_skill_loader.py -v`\n\n```json:metadata\n{\"files\": [\"core/config/skill_loader.py\", \"tests/test_skill_loader.py\"], \"verifyCommand\": \"uv run pytest tests/test_skill_loader.py -v\", \"acceptanceCriteria\": [\"SkillFrontmatter accepts new optional fields\", \"tools list accepts plain string and dict\", \"tool_names() returns list[str]\", \"tool_data_classes() returns dict\", \"existing tests pass\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: Migrate SKILL.md files to new schema",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Update Ana and Pesquisador SKILL.md with data_class tags on all tools + new fields.\n\n**Files:**\n- Modify: `agents/ana/SKILL.md`\n- Modify: `agents/pesquisador/SKILL.md`\n- Test: `tests/test_skill_loader.py`\n\n**Verify:** `uv run pytest tests/test_skill_loader.py -v -k agent`\n\n```json:metadata\n{\"files\": [\"agents/ana/SKILL.md\", \"agents/pesquisador/SKILL.md\", \"tests/test_skill_loader.py\"], \"verifyCommand\": \"uv run pytest tests/test_skill_loader.py -v -k agent\", \"acceptanceCriteria\": [\"Ana SKILL.md parses cleanly\", \"Pesquisador SKILL.md parses cleanly\", \"All tools have correct data_class\", \"capabilities/when_to_use/cost_tier/visibility/wiki_root declared\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Per-Agent Wiki Namespace",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Remove hardcoded wiki paths from main.py. Drive from SKILL.md.wiki_root.\n\n**Files:**\n- Modify: `main.py`\n- Create: `tests/test_wiki_namespace.py`\n\n**Verify:** `uv run pytest tests/test_wiki_namespace.py -v && uv run python -c \"from main import amain; print('ok')\"`\n\n```json:metadata\n{\"files\": [\"main.py\", \"tests/test_wiki_namespace.py\"], \"verifyCommand\": \"uv run pytest tests/test_wiki_namespace.py -v\", \"acceptanceCriteria\": [\"Ana wiki at data_dir/ana/wiki/\", \"Pesquisador wiki at data_dir/pesquisador/knowledge/\", \"Missing env vars = silent skip\", \"Path derivation unit tested\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Trifecta Guard",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Detect untrusted_read → external_write in same turn, abort + notify operator.\n\n**Files:**\n- Create: `core/security/__init__.py`\n- Create: `core/security/trifecta.py`\n- Modify: `core/agent_handler.py`\n- Test: `tests/test_trifecta.py`\n\n**Verify:** `uv run pytest tests/test_trifecta.py tests/test_agent_handler.py -v`\n\n```json:metadata\n{\"files\": [\"core/security/trifecta.py\", \"core/agent_handler.py\", \"tests/test_trifecta.py\"], \"verifyCommand\": \"uv run pytest tests/test_trifecta.py tests/test_agent_handler.py -v\", \"acceptanceCriteria\": [\"TrifectaGuard detects violation\", \"handle_agent_message aborts on violation\", \"data_class wiring from SKILL.md proven in test\", \"no violation for private_read+external_write\", \"existing handler tests pass\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Calendar Content Sandbox",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Strip/flag injection patterns from calendar event descriptions before LLM sees them.\n\n**Files:**\n- Create: `core/security/injection.py`\n- Modify: `core/memory/google_calendar.py`\n- Test: `tests/test_injection.py`\n\n**Verify:** `uv run pytest tests/test_injection.py tests/test_tools_calendar.py -v`\n\n```json:metadata\n{\"files\": [\"core/security/injection.py\", \"core/memory/google_calendar.py\", \"tests/test_injection.py\"], \"verifyCommand\": \"uv run pytest tests/test_injection.py tests/test_tools_calendar.py -v\", \"acceptanceCriteria\": [\"injection patterns detected\", \"clean descriptions pass through\", \"flagged events logged to stderr with event_id\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Loop Detection — Circuit Breaker",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Same tool+args called 3+ times per turn → circuit break, notify, halt.\n\n**Files:**\n- Modify: `core/agent_handler.py`\n- Test: `tests/test_agent_handler.py`\n\n**Verify:** `uv run pytest tests/test_agent_handler.py -v`\n\n```json:metadata\n{\"files\": [\"core/agent_handler.py\", \"tests/test_agent_handler.py\"], \"verifyCommand\": \"uv run pytest tests/test_agent_handler.py -v\", \"acceptanceCriteria\": [\"per-turn counter resets each turn\", \"different args = no break\", \"3 identical calls = circuit break\", \"max_identical_calls configurable\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Cache Discipline",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Move BRT timestamp from system prompt to user message tail. Stable prefix = cache hits.\n\n**Files:**\n- Modify: `core/agent_handler.py`\n- Test: `tests/test_agent_handler.py`\n\n**Verify:** `uv run pytest tests/test_agent_handler.py -v`\n\n```json:metadata\n{\"files\": [\"core/agent_handler.py\", \"tests/test_agent_handler.py\"], \"verifyCommand\": \"uv run pytest tests/test_agent_handler.py -v\", \"acceptanceCriteria\": [\"system message = cfg.system_prompt only\", \"user message ends with BRT timestamp\", \"all existing handler tests pass\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Memory Tier Schema — L0/L1",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Add session_summaries table (L1) + purge helpers. L0 retention = 30d. L1 retention = 180d.\n\n**Files:**\n- Modify: `core/memory/sqlite_store.py`\n- Test: `tests/test_sqlite_store.py`\n\n**Verify:** `uv run pytest tests/test_sqlite_store.py -v`\n\n```json:metadata\n{\"files\": [\"core/memory/sqlite_store.py\", \"tests/test_sqlite_store.py\"], \"verifyCommand\": \"uv run pytest tests/test_sqlite_store.py -v\", \"acceptanceCriteria\": [\"session_summaries table idempotent\", \"summary_insert/list/purge_before methods\", \"chat_purge_before returns row count\", \"agent-scoped queries only\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Memory Demotion Job",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** Weekly L0→L1 summarise (30d). Monthly L1→L2 wiki distil (180d). Crash-safe insert-before-purge order.\n\n**Files:**\n- Create: `core/memory/memory_jobs.py`\n- Modify: `main.py`\n- Test: `tests/test_memory_jobs.py`\n\n**Verify:** `uv run pytest tests/test_memory_jobs.py -v`\n\n```json:metadata\n{\"files\": [\"core/memory/memory_jobs.py\", \"main.py\", \"tests/test_memory_jobs.py\"], \"verifyCommand\": \"uv run pytest tests/test_memory_jobs.py -v\", \"acceptanceCriteria\": [\"empty store = noop\", \"L0 insert-before-purge\", \"L1 wiki-write-before-purge\", \"idempotent on second run\", \"freezegun used in tests\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Agent Directory",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** AgentRegistry.describe_agents() + MCP whitelist YAML loader.\n\n**Files:**\n- Modify: `core/agent_registry.py`\n- Create: `core/config/mcp_whitelist.py`\n- Create: `config/mcp_whitelist.yaml`\n- Test: `tests/test_agent_registry.py`\n\n**Verify:** `uv run pytest tests/test_agent_registry.py -v`\n\n```json:metadata\n{\"files\": [\"core/agent_registry.py\", \"core/config/mcp_whitelist.py\", \"config/mcp_whitelist.yaml\", \"tests/test_agent_registry.py\"], \"verifyCommand\": \"uv run pytest tests/test_agent_registry.py -v\", \"acceptanceCriteria\": [\"describe_agents returns capabilities/when_to_use/cost_tier/visibility\", \"no frontmatter = safe defaults\", \"mcp whitelist loader validates schema\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Full Suite + KPI Verification",
+      "status": "pending",
+      "blockedBy": [3, 4, 5, 6, 8, 9],
+      "description": "**Goal:** All tests pass, core coverage ≥ 80%, compile clean.\n\n**Verify:**\n```\nuv run pytest tests/test_skill_loader.py tests/test_wiki_namespace.py tests/test_trifecta.py tests/test_injection.py tests/test_agent_handler.py tests/test_sqlite_store.py tests/test_memory_jobs.py tests/test_agent_registry.py -v\nuv run pytest --cov=core --cov-report=term-missing 2>&1 | grep TOTAL\n```\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"uv run pytest --cov=core --cov-report=term-missing\", \"acceptanceCriteria\": [\"0 failures\", \"core coverage >= 80%\", \"compile check clean on all new files\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-04-16T00:00:00Z"
+}
