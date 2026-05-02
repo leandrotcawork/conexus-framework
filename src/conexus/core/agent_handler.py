@@ -282,7 +282,7 @@ async def handle_team_message(
                 continue
             frame.turns_left -= 1
 
-            delegate_schemas = build_delegate_schemas(team, frame.name)
+            delegate_schemas = build_delegate_schemas(registry, frame.name)
             all_tools = list(frame.cfg.tools_schema) + delegate_schemas
 
             resp, _ = await frame.cfg.llm.acall(
