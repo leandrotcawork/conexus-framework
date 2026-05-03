@@ -79,6 +79,16 @@ CREATE TABLE IF NOT EXISTS identity_blocks (
     updated_at   TEXT NOT NULL,
     PRIMARY KEY (agent_id, name)
 );
+
+CREATE TABLE IF NOT EXISTS chat_summaries (
+    agent_name           TEXT NOT NULL,
+    chat_id              TEXT NOT NULL,
+    summary_text         TEXT NOT NULL,
+    covers_until_msg_id  INTEGER NOT NULL,
+    token_count          INTEGER NOT NULL,
+    updated_at           TEXT NOT NULL,
+    PRIMARY KEY (agent_name, chat_id)
+);
 """
 
 
@@ -243,6 +253,51 @@ class SqliteStore:
                 (agent_name, limit),
             ).fetchall()
             return [dict(r) for r in reversed(rows)]  # oldest first
+
+    def summary_get(self, agent_name: str, chat_id: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT summary_text, covers_until_msg_id, token_count, updated_at
+                   FROM chat_summaries WHERE agent_name=? AND chat_id=?""",
+                (agent_name, chat_id),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def summary_set(
+        self,
+        agent_name: str,
+        chat_id: str,
+        summary_text: str,
+        covers_until_msg_id: int,
+        token_count: int,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO chat_summaries
+                       (agent_name, chat_id, summary_text, covers_until_msg_id, token_count, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(agent_name, chat_id) DO UPDATE SET
+                       summary_text=excluded.summary_text,
+                       covers_until_msg_id=excluded.covers_until_msg_id,
+                       token_count=excluded.token_count,
+                       updated_at=excluded.updated_at""",
+                (agent_name, chat_id, summary_text, covers_until_msg_id, token_count, _now_iso()),
+            )
+            conn.commit()
+
+    def chat_after(self, agent_name: str, chat_id: str, after_msg_id: int) -> list[dict]:
+        """Fetch all messages with id > after_msg_id, oldest first.
+
+        Note: chat_history has no chat_id column; chat_id param is accepted for
+        API forward-compatibility but ignored — all history for the agent is one logical chat.
+        """
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT id, role, content, ts FROM chat_history
+                   WHERE agent_name=? AND id > ? ORDER BY id ASC""",
+                (agent_name, after_msg_id),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     # ----- ping log -----
 
