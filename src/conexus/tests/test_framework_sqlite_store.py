@@ -30,14 +30,14 @@ def _fresh(tmp_db_path):
 
 def test_facts_roundtrip(tmp_db_path):
     store = _fresh(tmp_db_path)
-    store.fact_set("timezone", "America/Sao_Paulo")
-    assert store.fact_get("timezone") == "America/Sao_Paulo"
+    store.fact_set("test", "timezone", "America/Sao_Paulo")
+    assert store.fact_get("test", "timezone") == "America/Sao_Paulo"
 
-    store.fact_set("timezone", "UTC")
-    assert store.fact_get("timezone") == "UTC"
-    assert store.fact_get("nonexistent") is None
+    store.fact_set("test", "timezone", "UTC")
+    assert store.fact_get("test", "timezone") == "UTC"
+    assert store.fact_get("test", "nonexistent") is None
 
-    facts = store.facts_list()
+    facts = store.facts_list("test")
     assert {f["key"] for f in facts} == {"timezone"}
 
 

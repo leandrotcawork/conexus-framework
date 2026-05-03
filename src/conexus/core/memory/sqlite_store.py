@@ -10,10 +10,14 @@ from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS facts (
-    key         TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL,
+    key         TEXT NOT NULL,
     value       TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (agent_id, key)
 );
+CREATE INDEX IF NOT EXISTS idx_facts_agent_updated
+    ON facts(agent_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS todos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,6 +77,29 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _migrate_facts_v1_to_v2(conn: sqlite3.Connection) -> None:
+    """Migrate legacy facts table (no agent_id) to scoped schema."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(facts)").fetchall()]
+    if not cols or "agent_id" in cols:
+        return  # fresh DB or already migrated
+    conn.executescript("""
+        ALTER TABLE facts RENAME TO facts_legacy;
+        CREATE TABLE facts (
+            agent_id    TEXT NOT NULL,
+            key         TEXT NOT NULL,
+            value       TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            PRIMARY KEY (agent_id, key)
+        );
+        INSERT INTO facts (agent_id, key, value, updated_at)
+            SELECT '_legacy', key, value, updated_at FROM facts_legacy;
+        DROP TABLE facts_legacy;
+        CREATE INDEX IF NOT EXISTS idx_facts_agent_updated
+            ON facts(agent_id, updated_at DESC);
+    """)
+    conn.commit()
+
+
 class SqliteStore:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
@@ -82,6 +109,7 @@ class SqliteStore:
         from conexus.core.memory.tool_audit import init_tool_audit
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
+            _migrate_facts_v1_to_v2(conn)
             conn.executescript(SCHEMA)
             conn.commit()
             init_handoff_audit(conn)
@@ -109,28 +137,50 @@ class SqliteStore:
 
     # ----- facts -----
 
-    def fact_set(self, key: str, value: str) -> None:
+    def fact_set(self, agent_id: str, key: str, value: str) -> None:
         with self.connect() as conn:
             conn.execute(
-                """INSERT INTO facts (key, value, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value=excluded.value,
-                                                  updated_at=excluded.updated_at""",
-                (key, value, _now_iso()),
+                """INSERT INTO facts (agent_id, key, value, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(agent_id, key) DO UPDATE SET value=excluded.value,
+                                                       updated_at=excluded.updated_at""",
+                (agent_id, key, value, _now_iso()),
             )
             conn.commit()
 
-    def fact_get(self, key: str) -> str | None:
+    def fact_get(self, agent_id: str, key: str) -> str | None:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT value FROM facts WHERE key=?", (key,)
+                "SELECT value FROM facts WHERE agent_id=? AND key=?",
+                (agent_id, key),
             ).fetchone()
             return row["value"] if row else None
 
-    def facts_list(self) -> list[dict]:
+    def facts_list(self, agent_id: str) -> list[dict]:
         with self.connect() as conn:
-            rows = conn.execute("SELECT key, value, updated_at FROM facts").fetchall()
+            rows = conn.execute(
+                "SELECT key, value, updated_at FROM facts WHERE agent_id=? ORDER BY key",
+                (agent_id,),
+            ).fetchall()
             return [dict(r) for r in rows]
+
+    def facts_recent(self, agent_id: str, limit: int = 10) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT key, value, updated_at FROM facts
+                   WHERE agent_id=? ORDER BY updated_at DESC LIMIT ?""",
+                (agent_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def fact_delete(self, agent_id: str, key: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM facts WHERE agent_id=? AND key=?",
+                (agent_id, key),
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     # ----- todos -----
 

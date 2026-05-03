@@ -73,7 +73,7 @@ async def handle_agent_message(
 
     user_parts: list[str] = []
     if cfg.include_facts:
-        facts = store.facts_list()
+        facts = store.facts_list(cfg.name)
         facts_lines = "\n".join(f"{f['key']}: {f['value']}" for f in facts) or "(nenhum)"
         user_parts.append(f"Fatos conhecidos:\n{facts_lines}")
     user_parts.append(f"Histórico recente:\n{context_lines}")
