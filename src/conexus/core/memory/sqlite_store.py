@@ -95,6 +95,25 @@ CREATE TABLE IF NOT EXISTS oauth_pkce_state (
   code_verifier TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  user_id TEXT NOT NULL,
+  server_url TEXT NOT NULL,
+  access_token_enc BLOB NOT NULL,
+  refresh_token_enc BLOB,
+  expires_at INTEGER NOT NULL,
+  scopes_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, server_url)
+);
+
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  authorization_server TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  client_secret_enc BLOB,
+  registered_at TEXT NOT NULL
+);
 """
 
 
