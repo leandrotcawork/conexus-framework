@@ -70,6 +70,15 @@ CREATE TABLE IF NOT EXISTS failed_sends (
     attempts    INTEGER NOT NULL DEFAULT 0,
     next_retry  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS identity_blocks (
+    agent_id     TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    budget_chars INTEGER NOT NULL,
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (agent_id, name)
+);
 """
 
 
