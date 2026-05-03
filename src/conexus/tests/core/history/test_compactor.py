@@ -86,3 +86,66 @@ def test_keep_verbatim_always_pinned(store):
     result = compactor.build("ana", "default")
     last_5 = [m["content"] for m in result.verbatim_messages[-5:]]
     assert last_5 == ["m15", "m16", "m17", "m18", "m19"]
+
+
+def test_leftover_under_trigger_does_not_compact(store):
+    """Leftover exists (older too big to fit after pinned) but usage stays below trigger."""
+    # 50 fat messages, ~150 tokens each (600 chars)
+    fat = "x" * 600
+    for _ in range(50):
+        store.chat_append("ana", "user", fat)
+    # keep_verbatim=2 → pinned=2 msgs ≈ 300 toks; budget=1000; budget_left≈700 fits ~4 more.
+    # leftover = 50 - 2 - 4 = 44 msgs. usage ≈ 900/1000 = 0.90. trigger_pct=0.99 → no compact.
+    cfg = HistorySection(budget_tokens=1000, keep_verbatim=2, summary_budget=400, trigger_pct=0.99)
+    sentinel = {"called": False}
+
+    def fake_summarize(old, new):
+        sentinel["called"] = True
+        return "should_not_happen"
+
+    compactor = HistoryCompactor(store, cfg, summarize_fn=fake_summarize, token_fn=_approx_tokens)
+    result = compactor.build("ana", "default")
+    assert sentinel["called"] is False, "summarize should NOT be called when usage < trigger"
+    assert store.summary_get("ana", "default") is None
+    assert result.compaction_triggered is False
+
+
+def test_resummarization_when_first_summary_too_large(store):
+    """If summarize_fn returns text > summary_budget, it gets re-summarized once."""
+    big = "y" * 800
+    for _ in range(50):
+        store.chat_append("ana", "user", big)
+    cfg = HistorySection(budget_tokens=2000, keep_verbatim=6, summary_budget=100, trigger_pct=0.80)
+    call_count = {"n": 0}
+
+    def fake_summarize(old, new):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return "x" * 1000  # way over 100-token budget (~250 tokens)
+        return "tiny"  # second call returns small
+
+    compactor = HistoryCompactor(store, cfg, summarize_fn=fake_summarize, token_fn=_approx_tokens)
+    result = compactor.build("ana", "default")
+    assert call_count["n"] == 2, "expected exactly 2 summarize calls (initial + re-summarize)"
+    saved = store.summary_get("ana", "default")
+    assert saved["summary_text"] == "tiny"
+
+
+def test_summary_watermark_matches_leftover_last_id(store):
+    """covers_until_msg_id must equal the highest msg_id folded into the summary."""
+    big = "z" * 800
+    for _ in range(50):
+        store.chat_append("ana", "user", big)
+    cfg = HistorySection(budget_tokens=2000, keep_verbatim=6, summary_budget=400, trigger_pct=0.80)
+    captured = {}
+
+    def fake_summarize(old, new):
+        captured["new_msgs"] = new
+        return "summary"
+
+    compactor = HistoryCompactor(store, cfg, summarize_fn=fake_summarize, token_fn=_approx_tokens)
+    result = compactor.build("ana", "default")
+    assert result.compaction_triggered is True
+    saved = store.summary_get("ana", "default")
+    expected_watermark = captured["new_msgs"][-1]["id"]
+    assert saved["covers_until_msg_id"] == expected_watermark
