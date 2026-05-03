@@ -40,6 +40,10 @@ class AgentHandlerConfig:
     fallback_msg: str = "Não consegui completar."
     tool_tags: dict[str, str] | None = None  # None = TrifectaGuard disabled
     incoming_handoff: object | None = None  # Handoff — typed as object to avoid import cycle
+    # Identity baseline (opt-in via SKILL.md identity: block)
+    identity: object | None = None       # IdentityRuntime | None — typed as object to avoid import cycle
+    history_cfg: object | None = None    # HistorySection | None
+    summarize_fn: object | None = None   # Callable[[str|None, list[dict]], str] | None
 
 
 async def handle_agent_message(
@@ -68,23 +72,52 @@ async def handle_agent_message(
         guard = TrifectaGuard(cfg.tool_tags)
 
     now_brt = datetime.now(_BRT)
-    history = store.chat_recent(cfg.name, limit=10)
-    context_lines = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+
+    # Build history: compactor path when identity+history_cfg set, else legacy chat_recent
+    history_msgs: list[dict] = []
+    summary_msg: dict | None = None
+    if cfg.history_cfg is not None and cfg.summarize_fn is not None:
+        from conexus.core.history.compactor import build_history
+        result = build_history(store, cfg.name, cfg.history_cfg, cfg.summarize_fn)
+        if result.summary:
+            summary_msg = {"role": "system", "content": f"## Resumo de turnos anteriores\n{result.summary}"}
+        history_msgs = [{"role": m["role"], "content": m["content"]} for m in result.verbatim_messages]
+    else:
+        raw = store.chat_recent(cfg.name, limit=10)
+        history_msgs = [{"role": m["role"], "content": m["content"]} for m in raw]
+
+    context_lines = "\n".join(f"{m['role']}: {m['content']}" for m in history_msgs)
 
     user_parts: list[str] = []
-    if cfg.include_facts:
+    if cfg.include_facts and cfg.identity is None:
+        # Legacy facts injection — only when identity baseline is not active
         facts = store.facts_list(cfg.name)
         facts_lines = "\n".join(f"{f['key']}: {f['value']}" for f in facts) or "(nenhum)"
         user_parts.append(f"Fatos conhecidos:\n{facts_lines}")
     user_parts.append(f"Histórico recente:\n{context_lines}")
     user_parts.append(f"Leandro agora: {body}")
 
-    system = cfg.system_prompt + f"\n\nData/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}"
+    # Prepend identity context to system prompt when identity is active
+    identity_ctx = ""
+    if cfg.identity is not None:
+        from conexus.core.identity.context import assemble_identity_context
+        ir = cfg.identity  # IdentityRuntime
+        identity_ctx = assemble_identity_context(
+            ir.agent_id,
+            ir.cfg,
+            ir.store,
+            ir.wiki,
+            ir.blocks,
+        )
 
-    messages: list[dict] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": "\n\n".join(user_parts)},
-    ]
+    base_system = (identity_ctx + "\n\n" if identity_ctx else "") + cfg.system_prompt
+    system = base_system + f"\n\nData/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}"
+
+    messages: list[dict] = [{"role": "system", "content": system}]
+    if summary_msg is not None:
+        messages.append(summary_msg)
+    messages.extend(history_msgs)
+    messages.append({"role": "user", "content": "\n\n".join(user_parts)})
 
     _sent_progress: set[str] = set()
     _is_async_tool = inspect.iscoroutinefunction(cfg.execute_tool)

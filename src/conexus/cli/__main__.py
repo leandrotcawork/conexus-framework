@@ -75,7 +75,13 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
         tracker=tracker,
         agent_name=agent_name,
         system_prompt=skill.body,
+        store=store,
     )
+
+    # Register identity tools as a second backend when identity is active
+    if runtime.identity is not None:
+        from conexus.core.backends.python_backend import PythonBackend
+        registry.register_backend(agent_name, PythonBackend(runtime.identity.tools))
 
     cap_checker = CapChecker(tracker)
 
