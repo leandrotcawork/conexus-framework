@@ -213,19 +213,35 @@ Run these on every change to the memory pipeline, pin baselines, fail CI on regr
 
 **Phase 9 additions to the SQLite layer (shipped 2026-05-01):**
 
-`SqliteStore.init_db()` now calls `init_tool_audit(conn)` in addition to `init_handoff_audit(conn)`, creating the `tool_audit` table on first boot (`src/conexus/core/memory/sqlite_store.py:87`).
+`SqliteStore.init_db()` now calls `init_tool_audit(conn)` in addition to `init_handoff_audit(conn)`, creating the `tool_audit` table on first boot (`src/conexus/core/memory/sqlite_store.py:127`).
 
-`SqliteStore.conn` (property, `src/conexus/core/memory/sqlite_store.py:91`) opens a direct, unclosed `sqlite3.Connection`. Caller is responsible for `.close()`. Intended for long-lived operations — `handle_team_message` uses it to hold a single connection across the full team session rather than opening per-write connections.
+`SqliteStore.conn` (property, `src/conexus/core/memory/sqlite_store.py:137`) opens a direct, unclosed `sqlite3.Connection`. Caller is responsible for `.close()`. Intended for long-lived operations — `handle_team_message` uses it to hold a single connection across the full team session rather than opening per-write connections.
 
 `tool_audit` table (see `src/conexus/core/memory/tool_audit.py`) — per-tool-call record for replay fidelity: `(id, ts, session_id, agent, tool, args_json, result, outcome)`. Indexed on `session_id`. Populated by `record_tool_call(conn, *, session_id, agent, tool, args, result, outcome)`.
 
+**Phase 10 additions — agent identity baseline (shipped 2026-05-03):**
+
+**`facts` table — v1→v2 migration (agent-scoped).** The table primary key is now `(agent_id, key)` instead of a bare `key` (`src/conexus/core/memory/sqlite_store.py:12`). All fact methods gained a mandatory first argument `agent_id: str` (`fact_get`, `fact_set`, `facts_list`, `facts_recent`, `fact_delete` — lines 159–202). On first `init_db()` call against an old DB, `_migrate_facts_v1_to_v2()` renames the legacy table and re-inserts rows under `agent_id='_legacy'` (`src/conexus/core/memory/sqlite_store.py:99`). Cross-agent isolation is now native.
+
+**`identity_blocks` table** (`src/conexus/core/memory/sqlite_store.py:74`). Schema: `(agent_id, name, content, budget_chars, updated_at)`, PK `(agent_id, name)`. Accessed exclusively via `BlockStore` (`src/conexus/core/identity/blocks.py`). `BlockStore.set(agent_id, name, content, budget_chars)` raises `BlockOverBudgetError` when `len(content) > budget_chars`. Blocks are char-budgeted mutable text buffers (Letta-style core memory) that agents can update via `block_set` tool calls. Budget chars are declared in `SKILL.md identity.blocks`.
+
+**`chat_summaries` table** (`src/conexus/core/memory/sqlite_store.py:83`). Schema: `(agent_name, chat_id, summary_text, covers_until_msg_id, token_count, updated_at)`, PK `(agent_name, chat_id)`. Populated by `HistoryCompactor` (`src/conexus/core/history/compactor.py`). New store methods: `summary_get(agent_name, chat_id) -> dict | None` (line 257), `summary_set(...)` (line 266), `chat_after(agent_name, chat_id, after_msg_id) -> list[dict]` (line 288 — `chat_id` param accepted but ignored since `chat_history` has no `chat_id` column; all history for an agent is one logical chat).
+
+**`HistoryCompactor`** (`src/conexus/core/history/compactor.py`). Replaces the plain `chat_recent(limit=10)` call when `history_cfg + summarize_fn` are both set in `AgentHandlerConfig`. Algorithm: (1) load existing summary; (2) fetch messages after `covers_until_msg_id`; (3) pin last `keep_verbatim` turns; (4) greedily fill budget with older turns newest-first; (5) if leftover messages exist and usage ≥ `trigger_pct`, call `summarize_fn(old_summary, leftover)` and persist. Compaction stores the new summary back via `summary_set`. The `summarize_fn` factory is `make_summarizer(llm_call, budget_tokens)` in `src/conexus/core/history/summarizer.py` — emits a pt-BR prompt that updates a rolling summary while respecting a token budget. The legacy `chat_recent(limit=10)` path is preserved when neither `history_cfg` nor `summarize_fn` is set (backward compatible).
+
+**Identity context assembly.** `assemble_identity_context(agent_id, cfg, store, wiki, blocks) -> str` (`src/conexus/core/identity/context.py`) produces a markdown string injected at the front of the system prompt when `cfg.enabled`. Output has up to three sections in order: `## Block: <name>` for each declared block with content, `## Fatos recentes` when `facts.inject_recent > 0`, `## Wiki (índice)` when `wiki.inject_index is True`. Empty sections are omitted. `handle_agent_message` prepends the result before `cfg.system_prompt` (`src/conexus/core/agent_handler.py:100–113`). Legacy `include_facts` injection is suppressed when identity is active to prevent double-injection.
+
+**`IdentityTools`** (`src/conexus/core/identity/tools.py`). Built-in tool class auto-registered as a second backend when identity is active. Exposes: `memory_get/set/list_facts/delete`, `block_get/set/list`, `wiki_read/list/search/write/append_log`. All methods are scoped to `agent_id` passed at construction. `block_set` validates that `name` is declared in `identity.blocks`; returns `{"ok": False, "error": ...}` on budget overflow (does not raise to the LLM).
+
+**`IdentityRuntime`** (`src/conexus/cli/identity_runtime.py`). Holds `agent_id`, `cfg` (IdentitySection), `store`, `blocks` (BlockStore), `wiki` (WikiStore | None), `tools` (IdentityTools). Constructed by `build_identity_runtime(agent_id, cfg, store, skill_dir)` — returns `None` when `cfg` is None or `cfg.enabled` is False. Seeds `initial` block content on first run. `build_runtime` in `src/conexus/cli/runner.py` creates the runtime and stores it in `AgentRuntime.identity`. `__main__.py` registers `runtime.identity.tools` as a second `PythonBackend` in the registry when non-None (`src/conexus/cli/__main__.py:82–84`).
+
 **Keep:**
-- `core/memory/sqlite_store.py` — episodic log, idempotency, budget state, tool + handoff audit.
+- `core/memory/sqlite_store.py` — episodic log, idempotency, budget state, tool + handoff audit, facts, blocks, summaries.
 - `core/memory/wiki_store.py` — semantic memory. Git‑backed markdown is the *strongest* piece of Conexus's memory stack; don't replace it.
 - `SKILL.md` files — procedural memory; perfect as is.
 
 **Add (ranked by ROI):**
-1. **Rolling conversational summary** in SQLite. One new column (`sessions.summary`), refreshed every ~20 turns. Unblocks long sessions without context bloat. <100 LOC.
+1. ~~**Rolling conversational summary** in SQLite.~~ **Done in Phase 10** — `HistoryCompactor` + `chat_summaries` table.
 2. **Mem0‑style extractor** writing into the wiki. After each session, a cheap LLM reads the transcript + current relevant wiki pages and emits ADD/UPDATE/DELETE ops as `wiki_write` / `wiki_delete` calls. Existing tools, new orchestrator job in `jobs.py`. Git gives you audit + rollback for free.
 3. **LanceDB index over the wiki.** Embedded, lives on `/data` next to `conexus.db`, no new service. Populate on `wiki_write`, query via a new `wiki_search_semantic` tool. Keep the existing text grep tool — hybrid beats either alone.
 4. **Cross‑encoder rerank** (bge‑reranker‑base via HF inference API or local) on combined BM25+dense results. Biggest quality jump per LOC.
