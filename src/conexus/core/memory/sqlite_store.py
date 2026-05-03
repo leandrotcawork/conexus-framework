@@ -89,6 +89,12 @@ CREATE TABLE IF NOT EXISTS chat_summaries (
     updated_at           TEXT NOT NULL,
     PRIMARY KEY (agent_name, chat_id)
 );
+
+CREATE TABLE IF NOT EXISTS oauth_pkce_state (
+  nonce TEXT PRIMARY KEY,
+  code_verifier TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 """
 
 
