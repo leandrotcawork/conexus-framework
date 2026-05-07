@@ -205,6 +205,67 @@ def _handle_tag_suggest(args: argparse.Namespace) -> None:
             print(f"  {m}: ???  # add to SKILL_PACK.md data_classes")
 
 
+def _cmd_connectors(args: argparse.Namespace) -> None:
+    import json as _json
+    from conexus.core.connectors.registry import ConnectorRegistry
+
+    registry_path = getattr(args, "registry", None) or "connectors/registry.json"
+    reg = ConnectorRegistry.from_file(registry_path)
+
+    if args.action == "list":
+        for e in reg.list():
+            print(f"{e.name:24} {e.version:8} {e.ui_category:14} {e.ui_label}")
+            print(f"  {e.ui_description}")
+
+    elif args.action == "install":
+        e = reg.get(args.name)
+        if not e:
+            raise SystemExit(f"unknown connector: {args.name}")
+        target = Path("agents") / args.agent / "skills" / e.name
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "SKILL_PACK.md").write_text(
+            f"---\n"
+            f"name: {e.name}\n"
+            f'version: "{e.version}"\n'
+            f"backend: mcp-http\n"
+            f"capabilities: []\n"
+            f"data_classes: {{}}\n"
+            f"---\n"
+            f"{e.ui_description}\n",
+            encoding="utf-8",
+        )
+        (target / "connector.json").write_text(_json.dumps({
+            "server_url": e.server_url,
+            "scopes": e.scopes,
+            "ui": {
+                "label": e.ui_label, "icon": e.ui_icon,
+                "category": e.ui_category, "description": e.ui_description,
+            },
+        }, indent=2))
+        print(f"installed {e.name} → {target}")
+        print(f"add '{e.name}@{e.version}' to agents/{args.agent}/SKILL.md skills:")
+
+    elif args.action == "connect":
+        import secrets as _secrets
+        from conexus.core.oauth.state import encode_state
+
+        e = reg.get(args.name)
+        if not e:
+            raise SystemExit(f"unknown connector: {args.name}")
+        secret_str = os.environ.get("CONEXUS_STATE_SECRET", "")
+        if not secret_str:
+            raise SystemExit("CONEXUS_STATE_SECRET env var required")
+        secret = secret_str.encode()
+        nonce = _secrets.token_urlsafe(16)
+        state = encode_state(
+            secret, user_id=args.user, server_url=e.server_url,
+            return_to=getattr(args, "return_to", None) or "",
+            nonce=nonce,
+        )
+        base = os.environ.get("CONEXUS_OAUTH_BASE", "http://localhost:8000")
+        print(f"{base}/oauth/start?state={state}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="conexus",
@@ -243,6 +304,26 @@ def main() -> None:
     team_p.add_argument("pack", help="path to TEAM_PACK.md")
     team_p.add_argument("--available-agents", default="", help="comma-sep agent names available")
     team_p.set_defaults(func=_handle_run_team)
+
+    connectors_p = sub.add_parser("connectors", help="Manage MCP connectors")
+    connectors_sub = connectors_p.add_subparsers(dest="action")
+
+    conn_list = connectors_sub.add_parser("list", help="List available connectors")
+    conn_list.add_argument("--registry", default=None, help="Path to registry.json")
+    conn_list.set_defaults(func=_cmd_connectors, action="list")
+
+    conn_install = connectors_sub.add_parser("install", help="Install a connector pack")
+    conn_install.add_argument("name", help="Connector name")
+    conn_install.add_argument("--agent", required=True, help="Agent directory name")
+    conn_install.add_argument("--registry", default=None)
+    conn_install.set_defaults(func=_cmd_connectors, action="install")
+
+    conn_connect = connectors_sub.add_parser("connect", help="Generate OAuth start link")
+    conn_connect.add_argument("name", help="Connector name")
+    conn_connect.add_argument("--user", required=True, help="User ID")
+    conn_connect.add_argument("--return-to", dest="return_to", default=None)
+    conn_connect.add_argument("--registry", default=None)
+    conn_connect.set_defaults(func=_cmd_connectors, action="connect")
 
     args = parser.parse_args()
 
