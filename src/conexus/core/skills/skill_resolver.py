@@ -62,6 +62,14 @@ class SkillLoader:
             doc = parse_skill_pack(pack_path)
             tool_tags.update(doc.frontmatter.data_classes)
 
+            # Apply pack-owned SQL migrations on first load. Tables are prefixed
+            # `pack_<name>_*`; sqlite_store tracks applied versions in
+            # pack_migrations and treats re-application as a no-op.
+            migrations_dir = doc.pack_dir / "migrations"
+            store = self._pack_ctx.get("store") if self._pack_ctx else None
+            if store is not None and migrations_dir.is_dir():
+                store.apply_pack_migrations(name, migrations_dir)
+
             if doc.body:
                 prompt_parts.append(doc.body)
 

@@ -272,6 +272,15 @@ def _handle_studio(args: argparse.Namespace) -> None:
 
     from conexus.web.admin.app import make_admin_app
 
+    # Load .env from CWD so LLM keys (GEMINI/ANTHROPIC/OPENAI) reach the runtime
+    # without requiring the launcher to export them. No-op if dotenv missing or
+    # .env absent.
+    try:
+        from dotenv import load_dotenv  # type: ignore[import-not-found]
+        load_dotenv()
+    except ImportError:
+        pass
+
     agents_dir = Path(os.environ.get("CONEXUS_AGENTS_DIR", "./agents"))
     data_dir = Path(os.environ.get("CONEXUS_DATA_DIR", "./data"))
     data_dir.mkdir(parents=True, exist_ok=True)
