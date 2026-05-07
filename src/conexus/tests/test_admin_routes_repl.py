@@ -1,9 +1,17 @@
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from conexus.web.admin.app import make_admin_app
+from conexus.web.admin.services.runner_proxy import _clear_all_sessions
+
+
+@pytest.fixture(autouse=True)
+def _clean_sessions():
+    yield
+    _clear_all_sessions()
 
 
 def _seed(root: Path, name: str = "ana") -> None:

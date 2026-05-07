@@ -80,3 +80,8 @@ async def run_one_message(
 
 def reset_session(agent_name: str, session_id: str) -> None:
     _SESSIONS.pop((agent_name, session_id), None)
+
+
+def _clear_all_sessions() -> None:
+    """Test helper — clears all in-memory sessions."""
+    _SESSIONS.clear()

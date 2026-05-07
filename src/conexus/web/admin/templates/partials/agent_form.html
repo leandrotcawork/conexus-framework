@@ -7,7 +7,7 @@
     {% endfor %}
   </nav>
 
-  <div x-show="tab==='identity'" class="space-y-2">
+  <div x-show="tab==='identity'" x-cloak class="space-y-2">
     <p><b>Name:</b> {{ fm.name }}</p>
     <p><b>Role:</b> {{ fm.role }}</p>
     <p><b>Goal:</b><pre class="text-xs bg-slate-50 p-2 rounded whitespace-pre-wrap">{{ fm.goal }}</pre></p>
