@@ -10,10 +10,14 @@ from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS facts (
-    key         TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL,
+    key         TEXT NOT NULL,
     value       TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (agent_id, key)
 );
+CREATE INDEX IF NOT EXISTS idx_facts_agent_updated
+    ON facts(agent_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS todos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,11 +70,78 @@ CREATE TABLE IF NOT EXISTS failed_sends (
     attempts    INTEGER NOT NULL DEFAULT 0,
     next_retry  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS identity_blocks (
+    agent_id     TEXT NOT NULL,
+    name         TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    budget_chars INTEGER NOT NULL,
+    updated_at   TEXT NOT NULL,
+    PRIMARY KEY (agent_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS chat_summaries (
+    agent_name           TEXT NOT NULL,
+    chat_id              TEXT NOT NULL,
+    summary_text         TEXT NOT NULL,
+    covers_until_msg_id  INTEGER NOT NULL,
+    token_count          INTEGER NOT NULL,
+    updated_at           TEXT NOT NULL,
+    PRIMARY KEY (agent_name, chat_id)
+);
+
+CREATE TABLE IF NOT EXISTS oauth_pkce_state (
+  nonce TEXT PRIMARY KEY,
+  code_verifier TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  user_id TEXT NOT NULL,
+  server_url TEXT NOT NULL,
+  access_token_enc BLOB NOT NULL,
+  refresh_token_enc BLOB,
+  expires_at INTEGER NOT NULL,
+  scopes_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, server_url)
+);
+
+CREATE TABLE IF NOT EXISTS oauth_clients (
+  authorization_server TEXT PRIMARY KEY,
+  client_id TEXT NOT NULL,
+  client_secret_enc BLOB,
+  registered_at TEXT NOT NULL
+);
 """
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _migrate_facts_v1_to_v2(conn: sqlite3.Connection) -> None:
+    """Migrate legacy facts table (no agent_id) to scoped schema."""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(facts)").fetchall()]
+    if not cols or "agent_id" in cols:
+        return  # fresh DB or already migrated
+    conn.executescript("""
+        ALTER TABLE facts RENAME TO facts_legacy;
+        CREATE TABLE facts (
+            agent_id    TEXT NOT NULL,
+            key         TEXT NOT NULL,
+            value       TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            PRIMARY KEY (agent_id, key)
+        );
+        INSERT INTO facts (agent_id, key, value, updated_at)
+            SELECT '_legacy', key, value, updated_at FROM facts_legacy;
+        DROP TABLE facts_legacy;
+        CREATE INDEX IF NOT EXISTS idx_facts_agent_updated
+            ON facts(agent_id, updated_at DESC);
+    """)
+    conn.commit()
 
 
 class SqliteStore:
@@ -82,6 +153,7 @@ class SqliteStore:
         from conexus.core.memory.tool_audit import init_tool_audit
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
+            _migrate_facts_v1_to_v2(conn)
             conn.executescript(SCHEMA)
             conn.commit()
             init_handoff_audit(conn)
@@ -109,28 +181,50 @@ class SqliteStore:
 
     # ----- facts -----
 
-    def fact_set(self, key: str, value: str) -> None:
+    def fact_set(self, agent_id: str, key: str, value: str) -> None:
         with self.connect() as conn:
             conn.execute(
-                """INSERT INTO facts (key, value, updated_at)
-                   VALUES (?, ?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value=excluded.value,
-                                                  updated_at=excluded.updated_at""",
-                (key, value, _now_iso()),
+                """INSERT INTO facts (agent_id, key, value, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(agent_id, key) DO UPDATE SET value=excluded.value,
+                                                       updated_at=excluded.updated_at""",
+                (agent_id, key, value, _now_iso()),
             )
             conn.commit()
 
-    def fact_get(self, key: str) -> str | None:
+    def fact_get(self, agent_id: str, key: str) -> str | None:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT value FROM facts WHERE key=?", (key,)
+                "SELECT value FROM facts WHERE agent_id=? AND key=?",
+                (agent_id, key),
             ).fetchone()
             return row["value"] if row else None
 
-    def facts_list(self) -> list[dict]:
+    def facts_list(self, agent_id: str) -> list[dict]:
         with self.connect() as conn:
-            rows = conn.execute("SELECT key, value, updated_at FROM facts").fetchall()
+            rows = conn.execute(
+                "SELECT key, value, updated_at FROM facts WHERE agent_id=? ORDER BY key",
+                (agent_id,),
+            ).fetchall()
             return [dict(r) for r in rows]
+
+    def facts_recent(self, agent_id: str, limit: int = 10) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT key, value, updated_at FROM facts
+                   WHERE agent_id=? ORDER BY updated_at DESC LIMIT ?""",
+                (agent_id, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def fact_delete(self, agent_id: str, key: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM facts WHERE agent_id=? AND key=?",
+                (agent_id, key),
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     # ----- todos -----
 
@@ -184,6 +278,51 @@ class SqliteStore:
                 (agent_name, limit),
             ).fetchall()
             return [dict(r) for r in reversed(rows)]  # oldest first
+
+    def summary_get(self, agent_name: str, chat_id: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT summary_text, covers_until_msg_id, token_count, updated_at
+                   FROM chat_summaries WHERE agent_name=? AND chat_id=?""",
+                (agent_name, chat_id),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def summary_set(
+        self,
+        agent_name: str,
+        chat_id: str,
+        summary_text: str,
+        covers_until_msg_id: int,
+        token_count: int,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO chat_summaries
+                       (agent_name, chat_id, summary_text, covers_until_msg_id, token_count, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(agent_name, chat_id) DO UPDATE SET
+                       summary_text=excluded.summary_text,
+                       covers_until_msg_id=excluded.covers_until_msg_id,
+                       token_count=excluded.token_count,
+                       updated_at=excluded.updated_at""",
+                (agent_name, chat_id, summary_text, covers_until_msg_id, token_count, _now_iso()),
+            )
+            conn.commit()
+
+    def chat_after(self, agent_name: str, chat_id: str, after_msg_id: int) -> list[dict]:
+        """Fetch all messages with id > after_msg_id, oldest first.
+
+        Note: chat_history has no chat_id column; chat_id param is accepted for
+        API forward-compatibility but ignored — all history for the agent is one logical chat.
+        """
+        with self.connect() as conn:
+            rows = conn.execute(
+                """SELECT id, role, content, ts FROM chat_history
+                   WHERE agent_name=? AND id > ? ORDER BY id ASC""",
+                (agent_name, after_msg_id),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     # ----- ping log -----
 

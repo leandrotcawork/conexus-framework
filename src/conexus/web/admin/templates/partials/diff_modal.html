@@ -1,0 +1,25 @@
+<div class="card p-4 border-l-4 border-indigo-400">
+  <div class="flex items-center gap-2 mb-3">
+    <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+    </svg>
+    <h4 class="text-sm font-semibold text-slate-800">
+      Impact: <span class="font-mono text-indigo-600">{{ connector }}</span>
+      {% if agent %}→ <span class="font-mono">{{ agent }}</span>{% endif %}
+    </h4>
+  </div>
+  <div class="grid grid-cols-3 gap-3 text-center">
+    <div class="bg-slate-50 rounded-lg p-2 border border-slate-200">
+      <p class="text-xs text-slate-500 mb-0.5">Tools added</p>
+      <p class="text-lg font-semibold text-indigo-600">+{{ d.added_tools }}</p>
+    </div>
+    <div class="bg-slate-50 rounded-lg p-2 border border-slate-200">
+      <p class="text-xs text-slate-500 mb-0.5">Tokens/turn</p>
+      <p class="text-lg font-semibold text-slate-700">~{{ d.estimated_tokens }}</p>
+    </div>
+    <div class="bg-slate-50 rounded-lg p-2 border border-slate-200">
+      <p class="text-xs text-slate-500 mb-0.5">Cost/turn</p>
+      <p class="text-lg font-semibold text-slate-700">${{ "%.5f"|format(d.estimated_cost_per_turn_usd) }}</p>
+    </div>
+  </div>
+</div>

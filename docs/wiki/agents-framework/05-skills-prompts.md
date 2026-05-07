@@ -16,10 +16,43 @@ A **Skill** is a directory. The only required file is `SKILL.md`, which must ope
 
 **Phase 7 addition:** `SKILL.md` now also accepts a `skills:` list of sub-skill references (see `src/conexus/core/config/skill_loader.py:46`). Each entry names a `SKILL_PACK` directory under `agents/<name>/skills/<pack-name>/SKILL_PACK.md`. The `SkillLoader` (see `src/conexus/core/skills/skill_resolver.py`) resolves these at startup, registers the appropriate backend (`PythonBackend` or `McpStdioBackend`), merges `data_classes` tags for `TrifectaGuard`, and injects any prompt fragments from the pack body into the agent's system prompt.
 
+**Phase 10 addition — `identity:` block in SKILL.md** (`src/conexus/core/config/skill_loader.py:65`). Opt-in field `identity: IdentitySection | None = None` on `SkillFrontmatter`. When present and `enabled: true`, `build_runtime` constructs an `IdentityRuntime` and `handle_agent_message` prepends an identity context section to the system prompt automatically. Full schema:
+
+```yaml
+identity:
+  enabled: true
+  blocks:                      # Letta-style core-memory buffers, pinned in system prompt
+    user: 500                  # int shorthand → {budget_chars: 500}
+    scratch:
+      budget_chars: 200
+      initial: "ready"         # seeded on first boot if block is empty
+  facts:
+    enabled: true
+    inject_recent: 5           # inject N most-recently-updated facts into system prompt (0 = tool-pull only)
+  wiki:
+    dir: ./wiki/ana            # relative to SKILL.md directory, or absolute
+    inject_index: true         # prepend wiki file list to system prompt
+  history:                     # HistoryCompactor config; defaults shown
+    budget_tokens: 4000
+    keep_verbatim: 6
+    summary_budget: 800
+    trigger_pct: 0.80
+```
+
+`BlockSpec.coerce` is called via a Pydantic v2 `@field_validator("blocks", mode="before")` on `IdentitySection` (`src/conexus/core/config/skill_loader.py:72`) so integer shorthand in YAML is valid. All sub-sections default safely: `blocks: {}`, `facts.enabled: False`, `wiki: None`, `history` with the values above. An agent without an `identity:` block in its SKILL.md is entirely unaffected.
+
 **Phase 8 addition — `AgentHandlerConfig` cross-agent fields** (`src/conexus/core/agent_handler.py:39`):
 
 - `incoming_handoff: object | None = None` — carries the `Handoff` object when the agent is being invoked as the target of a cross-agent handoff. Typed as `object` to avoid an import cycle at the dataclass definition site; `handle_agent_message` downcasts it inside the function body.
 - Three-branch `TrifectaGuard` creation in `handle_agent_message` (`src/conexus/core/agent_handler.py:61`): (1) `tool_tags is None` → guard disabled; (2) `incoming_handoff is not None` → `TrifectaGuard.from_handoff(tool_tags, handoff)` — inherits sender taint + trust flag; (3) otherwise → `TrifectaGuard(tool_tags)` — fresh single-agent turn guard.
+
+**Phase 10 addition — identity + history fields on `AgentHandlerConfig`** (`src/conexus/core/agent_handler.py:43`):
+
+- `identity: object | None = None` — holds an `IdentityRuntime` when identity is active; typed as `object` to avoid import cycle. `handle_agent_message` calls `assemble_identity_context` from it and prepends the result to the system prompt.
+- `history_cfg: object | None = None` — holds a `HistorySection` from `SKILL.md identity.history`. When set alongside `summarize_fn`, activates `HistoryCompactor` instead of the legacy `chat_recent(limit=10)` path.
+- `summarize_fn: object | None = None` — `Callable[[str | None, list[dict]], str]`. Produced by `make_summarizer` in `src/conexus/core/history/summarizer.py`. Set by `build_runtime` via `build_identity_runtime`. When `None` (all agents without identity), the legacy history path is unchanged.
+
+All three fields default to `None` — backward compatible with every existing agent.
 
 ```
 agents/ana/
@@ -77,6 +110,8 @@ A Conexus system prompt is assembled from layers. Order matters for both **atten
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│ 0. Identity context (Phase 10, opt-in)                      │ ← blocks + facts + wiki index
+│    assemble_identity_context() → prepended to system prompt │
 │ 1. Identity / persona            (SKILL.md body, static)    │ ← cache anchor
 │ 2. Capability description        (what you can/can't do)    │
 │ 3. Tool catalog                  (auto-generated schemas)   │
@@ -87,6 +122,8 @@ A Conexus system prompt is assembled from layers. Order matters for both **atten
 │ 7. Few-shot examples             (optional, task-specific)  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+When `identity.enabled`, layer 0 is produced by `assemble_identity_context` (`src/conexus/core/identity/context.py`) and prepended to the system prompt string before the BRT timestamp append. It is *volatile* — blocks and facts change turn to turn — so it cannot share a cache breakpoint with the persona. Agents without `identity:` in SKILL.md see no change.
 
 Rule of thumb: **everything above the dashed line must be byte-identical across turns**. If you jam `datetime.now()` into line 1 you will never get a cache hit.
 

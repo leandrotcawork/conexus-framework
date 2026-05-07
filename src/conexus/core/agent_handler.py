@@ -11,7 +11,7 @@ import inspect
 import json
 import sqlite3
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -20,8 +20,17 @@ from conexus.core.budget.cap_checker import BudgetCap, CapChecker
 from conexus.core.llm.context_tag import set_context
 from conexus.core.llm.router import TrackedLLM
 from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.oauth.errors import NeedsAuthError
 
 _BRT = ZoneInfo("America/Sao_Paulo")
+
+
+@dataclass
+class NeedsAuthEvent:
+    server_url: str
+    scopes: list[str]
+    resource: str
+    user_id: str | None
 
 
 @dataclass
@@ -40,6 +49,12 @@ class AgentHandlerConfig:
     fallback_msg: str = "Não consegui completar."
     tool_tags: dict[str, str] | None = None  # None = TrifectaGuard disabled
     incoming_handoff: object | None = None  # Handoff — typed as object to avoid import cycle
+    # Identity baseline (opt-in via SKILL.md identity: block)
+    identity: object | None = None       # IdentityRuntime | None — typed as object to avoid import cycle
+    history_cfg: object | None = None    # HistorySection | None
+    summarize_fn: object | None = None   # Callable[[str|None, list[dict]], str] | None
+    user_id: str | None = None
+    on_auth_required: Callable[[NeedsAuthEvent], Awaitable[None]] | None = None
 
 
 async def handle_agent_message(
@@ -68,23 +83,52 @@ async def handle_agent_message(
         guard = TrifectaGuard(cfg.tool_tags)
 
     now_brt = datetime.now(_BRT)
-    history = store.chat_recent(cfg.name, limit=10)
-    context_lines = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+
+    # Build history: compactor path when identity+history_cfg set, else legacy chat_recent
+    history_msgs: list[dict] = []
+    summary_msg: dict | None = None
+    if cfg.history_cfg is not None and cfg.summarize_fn is not None:
+        from conexus.core.history.compactor import build_history
+        result = build_history(store, cfg.name, cfg.history_cfg, cfg.summarize_fn)
+        if result.summary:
+            summary_msg = {"role": "system", "content": f"## Resumo de turnos anteriores\n{result.summary}"}
+        history_msgs = [{"role": m["role"], "content": m["content"]} for m in result.verbatim_messages]
+    else:
+        raw = store.chat_recent(cfg.name, limit=10)
+        history_msgs = [{"role": m["role"], "content": m["content"]} for m in raw]
+
+    context_lines = "\n".join(f"{m['role']}: {m['content']}" for m in history_msgs)
 
     user_parts: list[str] = []
-    if cfg.include_facts:
-        facts = store.facts_list()
+    if cfg.include_facts and cfg.identity is None:
+        # Legacy facts injection — only when identity baseline is not active
+        facts = store.facts_list(cfg.name)
         facts_lines = "\n".join(f"{f['key']}: {f['value']}" for f in facts) or "(nenhum)"
         user_parts.append(f"Fatos conhecidos:\n{facts_lines}")
     user_parts.append(f"Histórico recente:\n{context_lines}")
     user_parts.append(f"Leandro agora: {body}")
 
-    system = cfg.system_prompt + f"\n\nData/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}"
+    # Prepend identity context to system prompt when identity is active
+    identity_ctx = ""
+    if cfg.identity is not None:
+        from conexus.core.identity.context import assemble_identity_context
+        ir = cfg.identity  # IdentityRuntime
+        identity_ctx = assemble_identity_context(
+            ir.agent_id,
+            ir.cfg,
+            ir.store,
+            ir.wiki,
+            ir.blocks,
+        )
 
-    messages: list[dict] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": "\n\n".join(user_parts)},
-    ]
+    base_system = (identity_ctx + "\n\n" if identity_ctx else "") + cfg.system_prompt
+    system = base_system + f"\n\nData/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}"
+
+    messages: list[dict] = [{"role": "system", "content": system}]
+    if summary_msg is not None:
+        messages.append(summary_msg)
+    messages.extend(history_msgs)
+    messages.append({"role": "user", "content": "\n\n".join(user_parts)})
 
     _sent_progress: set[str] = set()
     _is_async_tool = inspect.iscoroutinefunction(cfg.execute_tool)
@@ -161,11 +205,20 @@ async def handle_agent_message(
                         _sent_progress.add(fn_name)
                         await progress(cfg.progress_map[fn_name])
 
-                    result = (
-                        await cfg.execute_tool(fn_name, fn_args)
-                        if _is_async_tool
-                        else cfg.execute_tool(fn_name, fn_args)
-                    )
+                    try:
+                        result = (
+                            await cfg.execute_tool(fn_name, fn_args)
+                            if _is_async_tool
+                            else cfg.execute_tool(fn_name, fn_args)
+                        )
+                    except NeedsAuthError as nae:
+                        if cfg.on_auth_required:
+                            await cfg.on_auth_required(NeedsAuthEvent(
+                                server_url=nae.server_url, scopes=nae.scopes,
+                                resource=nae.resource, user_id=cfg.user_id))
+                        pending = "Preciso de permissão para acessar essa ferramenta. Verifique a mensagem de conexão."
+                        store.chat_append(cfg.name, "assistant", pending)
+                        return pending
 
                     if cfg.result_max_chars and len(result) > cfg.result_max_chars:
                         result = result[: cfg.result_max_chars] + "\n[... truncado]"
@@ -381,11 +434,18 @@ async def handle_team_message(
                                     tool=fn_name, args=fn_args, result=blocked, outcome="trifecta_blocked",
                                 )
                                 continue
-                        result = (
-                            await frame.execute_tool(fn_name, fn_args)
-                            if frame.is_async_tool
-                            else frame.execute_tool(fn_name, fn_args)
-                        )
+                        try:
+                            result = (
+                                await frame.execute_tool(fn_name, fn_args)
+                                if frame.is_async_tool
+                                else frame.execute_tool(fn_name, fn_args)
+                            )
+                        except NeedsAuthError as nae:
+                            if frame.cfg.on_auth_required:
+                                await frame.cfg.on_auth_required(NeedsAuthEvent(
+                                    server_url=nae.server_url, scopes=nae.scopes,
+                                    resource=nae.resource, user_id=frame.cfg.user_id))
+                            return "Preciso de permissão para acessar essa ferramenta. Verifique a mensagem de conexão."
                         frame.messages.append({"role": "tool", "tool_call_id": tc_id, "content": result})
                         record_tool_call(
                             audit_conn, session_id=session_id, agent=frame.name,

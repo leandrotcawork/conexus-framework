@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h2 class="text-xl font-semibold text-slate-900">Agents</h2>
+      <p class="text-sm text-slate-500 mt-0.5">{{ agents | length }} agent{{ 's' if agents | length != 1 }}</p>
+    </div>
+    <a href="/admin/agents/new"
+       class="btn-primary flex items-center gap-1.5">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+      </svg>
+      New agent
+    </a>
+  </div>
+
+  {% if agents %}
+  <div class="card overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-slate-100 bg-slate-50 text-left">
+          <th class="px-4 py-3 font-medium text-slate-600 text-xs uppercase tracking-wide">Name</th>
+          <th class="px-4 py-3 font-medium text-slate-600 text-xs uppercase tracking-wide">Role</th>
+          <th class="px-4 py-3 font-medium text-slate-600 text-xs uppercase tracking-wide">Model</th>
+          <th class="px-4 py-3 font-medium text-slate-600 text-xs uppercase tracking-wide">Tools</th>
+          <th class="px-4 py-3 font-medium text-slate-600 text-xs uppercase tracking-wide">Identity</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for a in agents %}
+        <tr class="table-row">
+          <td class="px-4 py-3">
+            <a href="/admin/agents/{{ a.name }}"
+               class="font-medium text-indigo-600 hover:text-indigo-800 hover:underline font-mono text-sm">{{ a.name }}</a>
+          </td>
+          <td class="px-4 py-3 text-slate-700 max-w-xs truncate">{{ a.role }}</td>
+          <td class="px-4 py-3">
+            <span class="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded">{{ a.llm_model }}</span>
+          </td>
+          <td class="px-4 py-3 text-slate-600">{{ a.tools_count }}</td>
+          <td class="px-4 py-3">
+            {% if a.identity_enabled %}
+              <span class="badge badge-ok">on</span>
+            {% else %}
+              <span class="text-slate-400 text-xs">off</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="card p-12 text-center">
+    <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+    </svg>
+    <p class="text-slate-500 mb-4">No agents yet.</p>
+    <a href="/admin/agents/new" class="btn-primary">Create your first agent</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

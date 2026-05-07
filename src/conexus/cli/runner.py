@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Awaitable
 
+from conexus.cli.identity_runtime import IdentityRuntime, build_identity_runtime
 from conexus.core.agent_handler import AgentHandlerConfig
 from conexus.core.budget.cap_checker import BudgetCap
 from conexus.core.config.skill_loader import parse_skill_file
 from conexus.core.llm.router import LLMConfig, build_llm
 from conexus.core.llm.usage_tracker import UsageTracker
+from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.tools.schema_gen import generate_tool_schemas
 
 
@@ -17,6 +20,7 @@ from conexus.core.tools.schema_gen import generate_tool_schemas
 class AgentRuntime:
     handler_cfg: AgentHandlerConfig
     tools_schema: list[dict]
+    identity: IdentityRuntime | None = None
 
 
 def build_runtime(
@@ -27,12 +31,15 @@ def build_runtime(
     tracker: UsageTracker,
     agent_name: str,
     system_prompt: str,
+    store: SqliteStore | None = None,
     cap: BudgetCap | None = None,
     cap_exceeded_msg: str = "Orçamento atingido.",
     fallback_msg: str = "Não consegui completar a tarefa.",
     max_turns: int = 6,
     progress_map: dict[str, str] | None = None,
     result_max_chars: int | None = None,
+    user_id: str | None = None,
+    on_auth_required: Any | None = None,
 ) -> AgentRuntime:
     """Parse skill file, build LLM, return AgentRuntime ready to hand to a bot."""
     skill = parse_skill_file(skill_path)
@@ -53,6 +60,19 @@ def build_runtime(
 
     tools_schema = generate_tool_schemas(type(tools_obj), skill.frontmatter.tools)
 
+    # Build identity runtime when identity: block present and enabled
+    identity: IdentityRuntime | None = None
+    history_cfg = None
+    if store is not None and skill.frontmatter.identity is not None:
+        identity = build_identity_runtime(
+            agent_id=agent_name,
+            cfg=skill.frontmatter.identity,
+            store=store,
+            skill_dir=Path(skill_path).parent,
+        )
+        if identity is not None:
+            history_cfg = skill.frontmatter.identity.history
+
     handler_cfg = AgentHandlerConfig(
         name=agent_name,
         llm=llm,
@@ -64,8 +84,12 @@ def build_runtime(
         cap_exceeded_msg=cap_exceeded_msg,
         include_facts=True,
         fallback_msg=fallback_msg,
+        identity=identity,
+        history_cfg=history_cfg,
+        user_id=user_id,
+        on_auth_required=on_auth_required,
         **({"progress_map": progress_map} if progress_map else {}),
         **({"result_max_chars": result_max_chars} if result_max_chars else {}),
     )
 
-    return AgentRuntime(handler_cfg=handler_cfg, tools_schema=tools_schema)
+    return AgentRuntime(handler_cfg=handler_cfg, tools_schema=tools_schema, identity=identity)

@@ -2,10 +2,10 @@
   "project": "Conexus",
   "current_phase_id": null,
   "summary": {
-    "total_phases": 5,
-    "completed_phases": 5,
-    "total_tasks": 35,
-    "completed_tasks": 35
+    "total_phases": 7,
+    "completed_phases": 6,
+    "total_tasks": 58,
+    "completed_tasks": 57
   },
   "phases": [
     {
@@ -44,6 +44,47 @@
       "started_at": "2026-05-01T00:00:00-03:00",
       "completed_at": "2026-05-01T23:00:00-03:00",
       "plan": "docs/superpowers/plans/2026-04-30-phase-9-runtime-replay-mcp.md"
+    },
+    {
+      "id": "phase-10",
+      "name": "Phase 10 — Agent Identity Baseline",
+      "status": "in_progress",
+      "started_at": "2026-05-02T00:00:00-03:00",
+      "plan": "docs/superpowers/plans/2026-05-02-agent-identity-baseline.md",
+      "tasks": [
+        {"id": "T-036", "title": "IdentitySection schema in SKILL.md frontmatter", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-037", "title": "Scope facts table by agent_id (v1→v2 migration)", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-038", "title": "Identity blocks store (char-budgeted mutable text)", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-039", "title": "chat_summaries table + summary_get/set/chat_after", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-040", "title": "History compactor (token budget + rolling summary)", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-041", "title": "IdentityTools (memory/block/wiki)", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-042", "title": "Identity context assembler", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-043", "title": "Wire identity into build_runtime + AgentHandlerConfig", "status": "done", "completed_at": "2026-05-02T00:00:00-03:00"},
+        {"id": "T-044", "title": "E2E integration test", "status": "done", "completed_at": "2026-05-03T00:00:00-03:00"},
+        {"id": "T-045", "title": "Migrate Ana to identity baseline (conexus-app repo)", "status": "planned", "priority": "medium", "notes": "Deferred per user. Add identity: block to agents/ana/SKILL.md; drop redundant memory_*/wiki_* methods from agents/ana/tools.py after uv sync."}
+      ]
+    },
+    {
+      "id": "phase-11",
+      "name": "Phase 11 — Connector Marketplace (Remote MCP + OAuth + UX)",
+      "status": "completed",
+      "started_at": "2026-05-07T00:00:00-03:00",
+      "completed_at": "2026-05-07T23:00:00-03:00",
+      "plan": "docs/superpowers/plans/2026-05-03-phase-11-connector-marketplace.md",
+      "tasks": [
+        {"id": "T-028", "title": "PKCE helpers + state JWT", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-029", "title": "AES-GCM token vault + HKDF crypto", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-030", "title": "OAuth AS/PRM metadata discovery (RFC 9728/8414)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-031", "title": "OAuthClient — DCR + PKCE + RFC 8707 + exchange/refresh", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-032", "title": "McpHttpBackend — MCP 2025-06-18 Streamable HTTP", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-033", "title": "ConnectorPack manifest + SkillLoader mcp-http branch", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-034", "title": "Handler NeedsAuthError + auth_required event", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-035", "title": "FastAPI OAuth router (/start + /callback)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-046", "title": "ConnectorRegistry + CLI (list/install/connect)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-047", "title": "Telegram magic-link UX (make_telegram_auth_callback)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-048", "title": "E2E integration test (fake AS + fake MCP)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
+        {"id": "T-049", "title": "Google Calendar connector pack (validation slice)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"}
+      ]
     }
   ]
 }

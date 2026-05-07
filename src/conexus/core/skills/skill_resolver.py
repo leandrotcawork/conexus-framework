@@ -3,10 +3,14 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 from conexus.core.skills.pack_loader import parse_skill_pack, SkillPackBackend
 from conexus.core.agent_registry import AgentRegistry
 from conexus.core.backends.python_backend import PythonBackend
 from conexus.core.backends.mcp_stdio_backend import McpStdioBackend
+
+if TYPE_CHECKING:
+    from conexus.core.backends.mcp_http_backend import McpHttpBackend
 
 
 class SkillLoader:
@@ -16,11 +20,16 @@ class SkillLoader:
     Returns (extra_prompt_fragment: str, tool_tags: dict[str, str]).
     """
 
-    def __init__(self, agent_dir: str | Path, registry: AgentRegistry, agent_name: str) -> None:
+    def __init__(self, agent_dir: str | Path, registry: AgentRegistry, agent_name: str, *,
+                 vault=None, user_id: str | None = None, oauth_client=None) -> None:
         self._agent_dir = Path(agent_dir)
         self._registry = registry
         self._agent_name = agent_name
+        self._vault = vault
+        self._user_id = user_id
+        self._oauth_client = oauth_client
         self._mcp_backends: list[McpStdioBackend] = []
+        self._http_backends: list[McpHttpBackend] = []  # lazy start — not in stdio lifecycle
 
     def load(self, skill_refs: list[str]) -> tuple[str, dict[str, str]]:
         """Load each skill. Returns (combined_prompt_fragment, merged_tool_tags).
@@ -69,6 +78,26 @@ class SkillLoader:
                 cfg = json.loads(mcp_json.read_text())
                 backend = McpStdioBackend(command=cfg["command"], env=cfg.get("env"))
                 self._mcp_backends.append(backend)
+                self._registry.register_backend(self._agent_name, backend)
+
+            elif doc.frontmatter.backend == SkillPackBackend.mcp_http:
+                from conexus.core.connectors.pack import parse_connector_pack
+                from conexus.core.backends.mcp_http_backend import McpHttpBackend
+                cp = parse_connector_pack(pack_path)
+                if self._vault is None or self._user_id is None:
+                    raise RuntimeError(
+                        f"mcp-http connector '{name}' requires SkillLoader(vault, user_id) — "
+                        f"caller did not provide identity context"
+                    )
+                backend = McpHttpBackend(
+                    server_url=cp.connector.server_url,
+                    vault=self._vault,
+                    user_id=self._user_id,
+                    scopes=cp.connector.scopes,
+                    oauth_client=self._oauth_client,
+                    asm=None,
+                )
+                self._http_backends.append(backend)
                 self._registry.register_backend(self._agent_name, backend)
 
         return "\n\n".join(prompt_parts), tool_tags

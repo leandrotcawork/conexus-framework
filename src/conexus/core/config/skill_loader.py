@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class LLMFallback(BaseModel):
@@ -32,6 +32,51 @@ class BudgetSection(BaseModel):
     on_exceed: str = "notify"
 
 
+class BlockSpec(BaseModel):
+    """A core-memory block — small mutable text buffer pinned in system prompt."""
+    budget_chars: int
+    initial: str | None = None
+
+    @classmethod
+    def coerce(cls, v):
+        # Allow `user: 500` (int) shorthand for `user: {budget_chars: 500}`
+        if isinstance(v, int):
+            return cls(budget_chars=v)
+        return v
+
+
+class FactsSection(BaseModel):
+    enabled: bool = False
+    inject_recent: int = 0  # 0 = tool-pull only
+
+
+class WikiSection(BaseModel):
+    dir: str
+    inject_index: bool = True
+
+
+class HistorySection(BaseModel):
+    budget_tokens: int = 4000
+    keep_verbatim: int = 6
+    summary_budget: int = 800
+    trigger_pct: float = 0.80
+
+
+class IdentitySection(BaseModel):
+    enabled: bool = False
+    blocks: dict[str, BlockSpec] = Field(default_factory=dict)
+    facts: FactsSection = Field(default_factory=FactsSection)
+    wiki: WikiSection | None = None
+    history: HistorySection = Field(default_factory=HistorySection)
+
+    @field_validator("blocks", mode="before")
+    @classmethod
+    def _coerce_blocks(cls, v):
+        if isinstance(v, dict):
+            return {k: BlockSpec.coerce(val) for k, val in v.items()}
+        return v
+
+
 class SkillFrontmatter(BaseModel):
     name: str
     role: str
@@ -44,6 +89,7 @@ class SkillFrontmatter(BaseModel):
     schedules: list[Schedule] = Field(default_factory=list)
     budget: Optional[BudgetSection] = None
     skills: list[str] = Field(default_factory=list)
+    identity: IdentitySection | None = None
 
 
 class SkillDocument(BaseModel):

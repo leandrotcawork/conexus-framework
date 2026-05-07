@@ -11,3 +11,21 @@ def test_cli_run_team_validates_pack(tmp_path, capsys, monkeypatch):
     rc = _handle_run_team(args)
     assert rc != 0
     assert "unknown member" in capsys.readouterr().out.lower()
+
+
+def test_studio_and_legacy_subcommands_parse() -> None:
+    from conexus.cli.__main__ import _build_parser
+
+    parser = _build_parser()
+
+    studio = parser.parse_args(["studio", "--port", "8765"])
+    assert studio.command == "studio" and studio.port == 8765 and callable(studio.func)
+
+    run_agent = parser.parse_args(["run", "agent", "ana"])
+    assert run_agent.command == "run" and run_agent.name == "ana" and callable(run_agent.func)
+
+    tag = parser.parse_args(["tag", "suggest", "agents/ana/tools.py"])
+    assert tag.command == "tag" and tag.tools_file.endswith("tools.py")
+
+    inst = parser.parse_args(["connectors", "install", "google_calendar", "--agent", "ana"])
+    assert inst.command == "connectors" and inst.action == "install" and inst.agent == "ana"

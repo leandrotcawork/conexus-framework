@@ -1,0 +1,43 @@
+{% if saved %}
+<div class="flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 text-sm text-emerald-800">
+  <svg class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+  </svg>
+  <div>
+    <p class="font-medium">Saved.</p>
+    <p class="text-emerald-700 text-xs mt-0.5">
+      Restart the agent CLI
+      (<code class="font-mono bg-emerald-100 px-1 rounded">conexus run agent {{ agent_name | default('') }}</code>)
+      to apply changes.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-sm text-red-800">
+  <p class="font-medium mb-1.5 flex items-center gap-1.5">
+    <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
+    </svg>
+    {{ errors | length }} error{{ 's' if errors | length != 1 }}
+  </p>
+  <ul class="list-disc pl-5 space-y-0.5 text-xs">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if warnings %}
+<div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-sm text-amber-800">
+  <p class="font-medium mb-1.5 flex items-center gap-1.5">
+    <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/>
+    </svg>
+    {{ warnings | length }} warning{{ 's' if warnings | length != 1 }}
+  </p>
+  <ul class="list-disc pl-5 space-y-0.5 text-xs">
+    {% for w in warnings %}<li>{{ w }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}

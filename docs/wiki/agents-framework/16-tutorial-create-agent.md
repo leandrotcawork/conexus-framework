@@ -83,10 +83,81 @@ llm_synthesis:          # second LLM for heavy synthesis steps
   temperature: 0.2
 schedules:              # cron jobs (see jobs.py section)
   - { kind: weekly_digest, cron: "0 20 * * 0" }
+identity:               # Phase 10 — opt-in persistent identity baseline
+  enabled: true         # false (default) = no identity, no change to behavior
+  blocks:               # named char-budgeted text buffers pinned in system prompt
+    user: 500           # int shorthand: {budget_chars: 500}
+  facts:
+    enabled: true
+    inject_recent: 5    # 0 = tool-pull only; >0 = inject N recent facts into prompt
+  wiki:
+    dir: ./wiki         # relative to SKILL.md or absolute
+    inject_index: true  # prepend wiki file list to every call
+  history:              # HistoryCompactor defaults shown
+    budget_tokens: 4000
+    keep_verbatim: 6
+    summary_budget: 800
+    trigger_pct: 0.80
 ```
 
 See `agents/ana/SKILL.md` for Ana's complete definition and
 `agents/pesquisador/SKILL.md` for Pesquisador's two-LLM setup.
+
+### Stateless worker vs persistent agent
+
+**Stateless worker** — no `identity:` block. This is the correct pattern for task-specific agents (e.g. a researcher that processes a document and returns). No memory overhead, no extra DB tables written.
+
+```yaml
+# agents/worker/SKILL.md
+---
+name: worker
+role: document processor
+goal: summarize documents on demand
+tools: [summarize]
+llm: {provider: gemini, model: gemini-2.5-flash}
+---
+```
+
+**Persistent agent** — add `identity: enabled: true`. The framework automatically:
+1. Builds an `IdentityRuntime` from `build_runtime` (`src/conexus/cli/runner.py:62`).
+2. Registers `identity.tools` as a second `PythonBackend` in the registry (`src/conexus/cli/__main__.py:82`).
+3. Prepends the identity context (blocks + recent facts + wiki index) before the system prompt on every call.
+4. Routes history through `HistoryCompactor` instead of the plain `chat_recent(limit=10)` call.
+
+The agent gains built-in tools automatically — no `tools.py` changes needed:
+
+| Tool | What it does |
+|------|-------------|
+| `memory_get(key)` | Retrieve a fact by key |
+| `memory_set(key, value)` | Persist a fact scoped to this agent |
+| `memory_list_facts()` | List all known facts |
+| `memory_delete(key)` | Remove a fact |
+| `block_get(name)` | Read a core-memory block |
+| `block_set(name, content)` | Update a block (budget enforced) |
+| `block_list()` | List all blocks |
+| `wiki_read(path)` | Read a wiki page |
+| `wiki_list(folder)` | List wiki files |
+| `wiki_search(query)` | Text search across wiki |
+| `wiki_write(path, content)` | Write a wiki page |
+| `wiki_append_log(kind, title, body)` | Append a log entry |
+
+These are backed by `IdentityTools` (`src/conexus/core/identity/tools.py`) which wraps `SqliteStore`, `BlockStore`, and `WikiStore` — all scoped to the agent's `agent_id` so agents cannot access each other's facts or blocks.
+
+You must add the tool names you want the LLM to call to the `tools:` list in SKILL.md. Example for a fully persistent agent:
+
+```yaml
+tools:
+  - memory_set
+  - memory_get
+  - memory_list_facts
+  - block_set
+  - block_get
+  - wiki_read
+  - wiki_write
+  - wiki_list
+  - wiki_search
+  # ... plus your domain tools
+```
 
 ### Body = system prompt
 
@@ -417,7 +488,78 @@ for `JobSpec` and `ConexusScheduler`.
 
 ---
 
-## 9. Checklist
+## 9. Attach a marketplace connector (Phase 11)
+
+Marketplace connectors expose remote MCP servers via OAuth 2.1. They wire into
+the agent as a `McpHttpBackend` — from the agent's perspective they look like
+any other SKILL_PACK.
+
+### Step 1 — browse and install
+
+```bash
+# list available connectors (reads connectors/registry.json)
+conexus connectors list
+
+# scaffold the connector pack under agents/<name>/skills/<connector>/
+conexus connectors install google_calendar --agent myagent
+```
+
+`install` writes two files into `agents/myagent/skills/google_calendar/`:
+
+- `SKILL_PACK.md` — frontmatter with `backend: mcp-http`, `capabilities: []`,
+  `data_classes: {}`.
+- `connector.json` — `server_url`, `scopes`, and UI metadata (used by
+  `ConnectorDescriptor`; see `src/conexus/core/connectors/pack.py`).
+
+### Step 2 — declare in SKILL.md
+
+```yaml
+skills:
+  - google_calendar@1.0
+```
+
+`SkillLoader` will pick up the `mcp-http` backend automatically at load time.
+It requires that `SkillLoader` is constructed with `vault` and `user_id`
+kwargs; omitting them raises `RuntimeError` at startup
+(`src/conexus/core/skills/skill_resolver.py:87`).
+
+### Step 3 — wire `on_auth_required` in the runner
+
+When the agent calls a tool and the vault holds no token, `McpHttpBackend`
+raises `NeedsAuthError`. `handle_agent_message` catches it and calls
+`cfg.on_auth_required` with a `NeedsAuthEvent`. Wire it to the Telegram magic-
+link factory:
+
+```python
+from conexus.adapters.telegram_auth import make_telegram_auth_callback
+
+cfg.on_auth_required = make_telegram_auth_callback(
+    chat_id=chat_id,
+    user_id=str(user_id),
+    bot=bot,
+    state_secret=state_secret_bytes,
+)
+cfg.user_id = str(user_id)
+```
+
+The callback sends an inline-keyboard button. Tapping it opens `/oauth/start`
+(FastAPI router in `src/conexus/web/oauth_router.py`), which runs DCR + PKCE
+and redirects to the AS. After the user grants access, `/oauth/callback`
+exchanges the code and stores the encrypted token in `TokenVault`. The next
+tool call succeeds transparently.
+
+### Step 4 — generate an OAuth start link for manual testing
+
+```bash
+CONEXUS_STATE_SECRET=<hex> CONEXUS_OAUTH_BASE=https://your.app \
+  conexus connectors connect google_calendar --user leandro
+```
+
+Prints a one-shot `/oauth/start?state=<jwt>` URL you can open in a browser.
+
+---
+
+## 10. Checklist
 
 - [ ] `agents/<name>/__init__.py` exists (empty)
 - [ ] `agents/<name>/SKILL.md` has all required frontmatter fields
@@ -429,3 +571,11 @@ for `JobSpec` and `ConexusScheduler`.
 - [ ] `conexus run agent <name>` starts the REPL without errors
 - [ ] Telegram token added to `.env` (local) and Fly secrets (production)
 - [ ] Agent registered in `telegram_runner.py`
+
+**If using identity baseline (`identity: enabled: true`):**
+
+- [ ] `identity.blocks` names are declared in SKILL.md frontmatter before first use
+- [ ] Identity tool names (`memory_set`, `block_set`, etc.) are listed in `tools:` allow-list
+- [ ] `build_runtime` receives the `store` kwarg (required for identity wiring — `src/conexus/cli/runner.py:34`)
+- [ ] `wiki.dir` path exists or is auto-created (framework creates it via `mkdir(parents=True, exist_ok=True)`)
+- [ ] `summarize_fn` is wired if token-budget compaction is desired (set by `build_runtime` automatically from `identity.history` when store is provided)

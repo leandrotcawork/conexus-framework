@@ -27,6 +27,8 @@ reinventing. Not deployed, not agent-facing — this is *our* map.
 | 17 | [tutorial-create-team.md](17-tutorial-create-team.md) | How to create a team — TEAM_PACK.md, edges, budget cascader, delegate_to, replay |
 | 18 | [tutorial-deploy.md](18-tutorial-deploy.md) | Local dev + Fly.io deployment — env vars, secrets checklist, Dockerfile, volumes, SSH key injection, MCP server |
 | 19 | [tutorial-runtime-flow.md](19-tutorial-runtime-flow.md) | Boot sequence, single-agent loop, tool execution, TrifectaGuard, budget cap, multi-agent stack, audit/replay, extension cookbook |
+| 20 | [connector-marketplace.md](20-connector-marketplace.md) | Remote MCP connector marketplace — ConnectorPack format, OAuth 2.1 / PKCE / DCR auth flow, AES-GCM vault, ConnectorRegistry, CLI, security model |
+| 21 | [conexus-studio.md](21-conexus-studio.md) | Conexus Studio local web UI — FastAPI admin sub-app, `make_admin_app` factory, AdminContext DI, HTMX/Alpine/Tailwind stack, `conexus studio` CLI subcommand |
 
 ## Reading order
 
@@ -36,6 +38,8 @@ Third pass: 06 → 08 → 09 → 10 → 12 (advanced).
 Synthesis: 13 → 14.
 Direction: 15 (intent only, not commitment).
 Tutorials (ship something): 16 → 17 → 18 → 19.
+Connector marketplace: 20 (auth flow + security model) → then 16 §9 (install + wire).
+Studio UI: 21 (Wave 0 scaffold — factory, CLI, DI, front-end stack).
 
 ## Conventions
 

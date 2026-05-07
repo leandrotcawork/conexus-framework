@@ -1,10 +1,12 @@
 # System Pulse — Conexus
-> Auto-updated: 2026-05-01
+> Auto-updated: 2026-05-07
 
 ## Current Phase
-**ALL PHASES COMPLETE.** Phase 9 shipped: multi-agent runtime (handle_team_message), delegate_to_<agent> LLM tool, context_mode/return_on, replay, MCPProducer, tool_audit, hop chaining, cross-agent Trifecta taint propagation. 87 new tests. All 5 phases done.
+**Phase 11 — Connector Marketplace: COMPLETE (all 13 tasks).** OAuth 2.1 + PKCE + DCR + AES-GCM vault + McpHttpBackend + ConnectorPack + FastAPI router + CLI + Telegram magic-link + E2E test + wiki sync. Phase 10 (T-045 Ana migration) deferred per user.
 
 ## Recent Changes
+- 2026-05-07: Phase 11 Connector Marketplace complete (26 commits, 892aa5b..154151f). New: oauth/, vault/, connectors/, web/, adapters/telegram_auth.py, connectors/registry.json, _marketplace_demo connector pack. SqliteStore: oauth_pkce_state, oauth_tokens, oauth_clients tables. AgentHandlerConfig: user_id + on_auth_required. ADR-002: PKCE verifier server-side. Wiki partitions 03/11/14/16/20 updated.
+- 2026-05-03: Identity baseline 9/10 (commits b499d2f..10caf36). New modules: core/identity/, core/history/, cli/identity_runtime.py. SqliteStore: facts now (agent_id, key, value); new tables identity_blocks + chat_summaries. AgentRuntime+AgentHandlerConfig wired for identity/compactor. Opt-in via `identity:` block in SKILL.md. Opus review APPROVED. E2E test green.
 - 2026-05-01: Phase 9 complete (~12 commits). Stack-based team loop in agent_handler.py; delegate_tool.py + transcript.py; replay.py + tool_audit.py; mcp/producer.py (FastMCP); McpStdioBackend hardened (Lock + id correlation); CLI: mcp-server + replay subcommands. 87 new tests passing.
 - 2026-04-30: Phase 8 complete (15 commits d476101..b7fa52c). Codex pre-review found 11 blockers; B-1 (router AST sandbox escape) + B-3 (audit not wired) fixed inline at aa717aa; remaining 9 deferred to Phase 9 with rationale. Opus review APPROVED_WITH_NOTES; cosmetic fixes applied (b7fa52c).
 - 2026-04-30: Phase 7 follow-up fixes (16f864f): SkillLoader.start_all/stop_all lifecycle for mcp-stdio; class detection tightened (v.__module__ == mod.__name__).
@@ -22,7 +24,11 @@ src/conexus/core/ = framework kernel (agent_handler, agent_registry, llm, memory
            delegate_tool, transcript, replay)                                                   ← Phase 9
   + memory/handoff_audit.py, tool_audit.py                                                     ← Phase 8/9
   + mcp/__init__.py, mcp/producer.py (FastMCP wiki server)                                     ← Phase 9
-src/conexus/cli/ = CLI entry point + build_runtime + tag suggest + run-team + mcp-server + replay
+  + identity/ (blocks, tools, context), history/ (summarizer, compactor)                        ← Phase 10
+  + oauth/ (pkce, state, metadata, client, errors), vault/ (crypto, token_vault)                ← Phase 11
+  + connectors/ (pack, registry), web/ (oauth_router, app), adapters/telegram_auth.py           ← Phase 11
+  + backends/mcp_http_backend.py                                                                 ← Phase 11
+src/conexus/cli/ = CLI entry point + build_runtime + tag suggest + run-team + mcp-server + replay + identity_runtime + connectors
 adapters/ = consumer wiring (Telegram, SSH, wiki clone)
 agents/teams/product_team/TEAM_PACK.md = reference 3-member pack (ana + pm + researcher)
 SQLite @ /data/conexus.db (now includes handoff_audit table), wiki @ /data/wiki/
@@ -41,10 +47,13 @@ conexus pip wheel = src/conexus/ only (framework deps subset)
 ## Known Risks and Tech Debt
 - `codex:codex-rescue` sandbox blocks file reads in this env — direct audit needed for future phases
 - Windows pytest full suite hangs (>2 min, no output) — likely scheduler/Telegram test that doesn't stop; bypass via per-file batched runs
-- Phase 6/7/8/9/wiki commits all local; not pushed to remote yet (deferred per user)
+- Phase 6-11 commits all local; not pushed to remote yet (deferred per user — 26+ commits ahead)
 - Pre-existing ruff F401 in scripts/bootstrap_google.py + tests/conftest.py (unused imports) — pre-Phase-7 tech debt, untouched per surgical-changes policy
-- SqliteStore.conn property returns unclosed connection — callers responsible for closing (test/audit pattern only)
+- SqliteStore.conn property returns unclosed connection — callers responsible for `with store.conn as c:` pattern
 - MCPProducer bearer_token in env var only; no rotation/refresh mechanism yet
+- Google Calendar MCP server URL is placeholder (mcp.google.com/calendar not yet officially live)
+- /oauth/callback repeats PRM+AS discovery on every call (no caching); acceptable for MVP
+- Telegram on_auth_required factory not wired into actual bot message handler yet (factory exists, wiring deferred)
 
 ## Key File Locations
 - Kernel loop: `src/conexus/core/agent_handler.py`
@@ -71,9 +80,21 @@ conexus pip wheel = src/conexus/ only (framework deps subset)
 - Framework tests: `src/conexus/tests/test_framework_*.py`
 - Dev workflow: `docs/dev-workflow/`
 - Phase 9 plan: `docs/superpowers/plans/2026-04-30-phase-9-runtime-replay-mcp.md`
+- Identity baseline plan: `docs/superpowers/plans/2026-05-02-agent-identity-baseline.md`
+- Identity modules: `src/conexus/core/identity/{blocks,tools,context}.py`, `src/conexus/core/history/{summarizer,compactor}.py`, `src/conexus/cli/identity_runtime.py`
+- Phase 11 plan: `docs/superpowers/plans/2026-05-03-phase-11-connector-marketplace.md`
+- OAuth stack: `src/conexus/core/oauth/{pkce,state,metadata,client,errors}.py`
+- Token vault: `src/conexus/core/vault/{crypto,token_vault}.py`
+- MCP HTTP backend: `src/conexus/core/backends/mcp_http_backend.py`
+- Connector pack: `src/conexus/core/connectors/{pack,registry}.py`
+- OAuth web: `src/conexus/web/{oauth_router,app}.py`
+- Telegram auth: `src/conexus/adapters/telegram_auth.py`
+- Connector registry: `connectors/registry.json`
+- Demo pack: `agents/teams/_marketplace_demo/skills/google_calendar/`
 
 ## Active Decisions
 - ADR-001: wiki-keeper scope locked to `docs/wiki/agents-framework/`
+- ADR-002: PKCE verifier server-side only (oauth_pkce_state table, nonce in JWT)
 - Monorepo approach for framework/consumer split (per migration plan §2)
 - HandoffRouter `when:` expressions evaluated via whitelisted AST walker — `eval` is unsafe for pip-installed third-party TEAM_PACKs (B-1 fix at aa717aa)
 - Handoff audit captures original envelope (replay fidelity); resolved target reconstructable from edges + outcome string
