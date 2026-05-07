@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from conexus.core.packs.installer import InstallError, install_pack, uninstall_pack
+from conexus.core.packs.installer import InstallError, _safe_name, install_pack, uninstall_pack
 from conexus.core.packs.registry import PacksRegistry
 
 
@@ -24,6 +24,11 @@ def make_packs_router() -> APIRouter:
     @router.post("/agents/{name}/packs/{pack_id}/install")
     async def install(request: Request, name: str, pack_id: str) -> Response:
         ctx = request.app.state.ctx
+        try:
+            _safe_name(name, "agent name")
+            _safe_name(pack_id, "pack_id")
+        except InstallError as e:
+            raise HTTPException(400, str(e)) from e
         agent_dir = ctx.agents_dir / name
         if not agent_dir.exists():
             raise HTTPException(404, name)
@@ -42,6 +47,11 @@ def make_packs_router() -> APIRouter:
     @router.post("/agents/{name}/packs/{pack_id}/uninstall")
     async def uninstall(request: Request, name: str, pack_id: str) -> Response:
         ctx = request.app.state.ctx
+        try:
+            _safe_name(name, "agent name")
+            _safe_name(pack_id, "pack_id")
+        except InstallError as e:
+            raise HTTPException(400, str(e)) from e
         agent_dir = ctx.agents_dir / name
         if not agent_dir.exists():
             raise HTTPException(404, name)

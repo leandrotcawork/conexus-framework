@@ -92,3 +92,11 @@ def test_install_rejects_unsigned_by_default(tmp_path: Path):
     # With override, succeeds
     install_pack("demo", agent_dir=agent_dir, packs_root=packs_root,
                  registry_path=packs_root / "registry.json", allow_unsigned=True)
+
+
+def test_install_rejects_traversal_pack_id(tmp_path: Path):
+    agent_dir, packs_root = _seed(tmp_path)
+    for bad in ["../evil", "../../etc/passwd", ".hidden", "a\\b", ""]:
+        with pytest.raises(InstallError, match="invalid pack_id"):
+            install_pack(bad, agent_dir=agent_dir, packs_root=packs_root,
+                         registry_path=packs_root / "registry.json", allow_unsigned=True)

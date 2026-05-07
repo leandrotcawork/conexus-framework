@@ -44,6 +44,11 @@ def _remove_skill_ref(skill_md: Path, pack_id: str) -> None:
     _write_skill_md(skill_md, fm, body)
 
 
+def _safe_name(value: str, label: str) -> None:
+    if "/" in value or "\\" in value or value.startswith(".") or not value:
+        raise InstallError(f"invalid {label}: {value!r}")
+
+
 def install_pack(
     pack_id: str,
     *,
@@ -52,6 +57,7 @@ def install_pack(
     registry_path: Path,
     allow_unsigned: bool = False,
 ) -> None:
+    _safe_name(pack_id, "pack_id")
     reg = PacksRegistry.load(registry_path)
     try:
         entry = reg.get(pack_id)
