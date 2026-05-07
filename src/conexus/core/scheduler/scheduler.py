@@ -40,6 +40,8 @@ CATCHUP_WINDOWS = {
     "weekly_digest":       (True,  0),   # weekly, catchable
     "wiki_audit":          (True,  0),   # monthly, catchable
     "proactive_research":  (False, 0),   # skip if missed
+    # Reminders pack
+    "reminder":            (False, 0),
 }
 
 
@@ -93,3 +95,28 @@ class ConexusScheduler:
 
     def shutdown(self) -> None:
         self.scheduler.shutdown(wait=False)
+
+
+def rehydrate_reminders(
+    sched: ConexusScheduler,
+    store: SqliteStore,
+    *,
+    dispatch,
+) -> None:
+    """Read active reminders from sqlite and register one job per row."""
+    with store.connect() as conn:
+        rows = conn.execute(
+            "SELECT id, agent_name, cron, message FROM pack_reminders_jobs WHERE active=1"
+        ).fetchall()
+    for row in rows:
+        msg = row["message"]
+
+        async def fn(_msg=msg):
+            await dispatch(_msg)
+
+        sched.add_job(JobSpec(
+            agent_name=row["agent_name"],
+            kind="reminder",
+            cron=row["cron"],
+            fn=fn,
+        ))
