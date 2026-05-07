@@ -1,0 +1,10 @@
+{
+  "server_url": "https://mcp.google.com/calendar",
+  "scopes": ["https://www.googleapis.com/auth/calendar"],
+  "ui": {
+    "label": "Google Calendar",
+    "icon": "calendar",
+    "category": "Productivity",
+    "description": "Read and manage events on the user's Google Calendar."
+  }
+}
