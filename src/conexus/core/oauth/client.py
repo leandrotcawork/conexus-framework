@@ -21,7 +21,9 @@ class TokenResponse:
 class OAuthClient:
     def __init__(self, *, store, master_secret: bytes, redirect_uri: str) -> None:
         self._store = store
-        self._csec_key = derive_key(master_secret, salt=b"oauth_clients")
+        self._csec_key = derive_key(
+            master_secret, salt=b"oauth_clients", info=b"conexus-oauth-clients"
+        )
         self._redirect_uri = redirect_uri
 
     async def ensure_client(self, asm: AuthorizationServerMetadata) -> tuple[str, str | None]:
