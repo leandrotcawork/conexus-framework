@@ -1,6 +1,7 @@
 """Conexus Studio admin sub-app."""
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from .deps import AdminContext
 from .routes.agents import make_agents_router
 from .routes.connections import make_connections_router
 from .routes.connectors import make_connectors_router
+from .routes.packs import make_packs_router
 from .routes.repl import make_repl_router
 
 _HERE = Path(__file__).parent
@@ -33,13 +35,17 @@ def make_admin_app(
     agents_dir: Path,
     data_dir: Path,
     connectors_registry_path: Path | None = None,
+    repo_root: Path | None = None,
 ) -> FastAPI:
+    _repo_root = repo_root or agents_dir.parent
     ctx = AdminContext(
         agents_dir=agents_dir,
         data_dir=data_dir,
         connectors_registry_path=Path(
-            connectors_registry_path or Path.cwd() / "connectors" / "registry.json"
+            connectors_registry_path or _repo_root / "packs" / "registry.json"
         ),
+        repo_root=_repo_root,
+        allow_unsigned=os.getenv("CONEXUS_ALLOW_UNSIGNED", "").lower() in ("1", "true"),
     )
 
     app = FastAPI(title="Conexus Studio", docs_url=None, redoc_url=None)
@@ -50,6 +56,7 @@ def make_admin_app(
     app.include_router(make_agents_router())
     app.include_router(make_connectors_router())
     app.include_router(make_connections_router())
+    app.include_router(make_packs_router())
     app.include_router(make_repl_router())
 
     return app

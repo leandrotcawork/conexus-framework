@@ -21,8 +21,12 @@ class SkillLoader:
     """
 
     def __init__(self, agent_dir: str | Path, registry: AgentRegistry, agent_name: str, *,
+                 packs_root: str | Path | None = None,
+                 pack_ctx: dict | None = None,
                  vault=None, user_id: str | None = None, oauth_client=None) -> None:
         self._agent_dir = Path(agent_dir)
+        self._packs_root = Path(packs_root) if packs_root else None
+        self._pack_ctx = pack_ctx or {}
         self._registry = registry
         self._agent_name = agent_name
         self._vault = vault
@@ -30,6 +34,17 @@ class SkillLoader:
         self._oauth_client = oauth_client
         self._mcp_backends: list[McpStdioBackend] = []
         self._http_backends: list[McpHttpBackend] = []  # lazy start — not in stdio lifecycle
+
+    def _resolve_pack(self, name: str) -> Path:
+        candidates = [self._agent_dir / "skills" / name / "SKILL_PACK.md"]
+        if self._packs_root is not None:
+            candidates.append(self._packs_root / name / "SKILL_PACK.md")
+        for c in candidates:
+            if c.exists():
+                return c
+        raise FileNotFoundError(
+            f"SKILL_PACK.md not found for skill '{name}': searched {candidates}"
+        )
 
     def load(self, skill_refs: list[str]) -> tuple[str, dict[str, str]]:
         """Load each skill. Returns (combined_prompt_fragment, merged_tool_tags).
@@ -42,9 +57,7 @@ class SkillLoader:
 
         for ref in skill_refs:
             name = ref.split("@")[0]
-            pack_path = self._agent_dir / "skills" / name / "SKILL_PACK.md"
-            if not pack_path.exists():
-                raise FileNotFoundError(f"SKILL_PACK.md not found for skill '{name}': {pack_path}")
+            pack_path = self._resolve_pack(name)
 
             doc = parse_skill_pack(pack_path)
             tool_tags.update(doc.frontmatter.data_classes)
@@ -56,19 +69,25 @@ class SkillLoader:
                 tools_py = doc.pack_dir / "tools.py"
                 if tools_py.exists():
                     mod = self._load_module(name, tools_py)
-                    tools_cls = next(
-                        (
-                            v for v in vars(mod).values()
-                            if isinstance(v, type)
-                            and not v.__name__.startswith("_")
-                            and v.__module__ == mod.__name__
-                        ),
-                        None,
-                    )
-                    if tools_cls:
-                        self._registry.register_backend(
-                            self._agent_name, PythonBackend(tools_cls())
+                    factory = getattr(mod, "create_tools", None)
+                    if callable(factory):
+                        instance = factory(self._pack_ctx)
+                    else:
+                        tools_cls = next(
+                            (
+                                v for v in vars(mod).values()
+                                if isinstance(v, type)
+                                and not v.__name__.startswith("_")
+                                and v.__module__ == mod.__name__
+                            ),
+                            None,
                         )
+                        if tools_cls is None:
+                            continue
+                        instance = tools_cls()
+                    self._registry.register_backend(
+                        self._agent_name, PythonBackend(instance)
+                    )
 
             elif doc.frontmatter.backend == SkillPackBackend.mcp_stdio:
                 mcp_json = doc.pack_dir / "mcp.json"

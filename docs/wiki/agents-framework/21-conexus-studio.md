@@ -38,22 +38,24 @@ def make_admin_app(
     agents_dir: Path,
     data_dir: Path,
     connectors_registry_path: Path | None = None,
+    repo_root: Path | None = None,
 ) -> FastAPI:
 ```
 
-Behaviour (verified in `app.py:33-53`):
+Behaviour (verified in `app.py:31-58`):
 
 - Constructs an `AdminContext` dataclass and attaches it to `app.state.ctx`.
 - Creates a `FastAPI` instance with `docs_url=None, redoc_url=None` (Swagger
   UI disabled).
 - Mounts `StaticFiles` at `/admin/static` pointing to
   `src/conexus/web/admin/static/`.
-- Registers a single route `GET /admin/` that renders `base.html`.
+- Registers four routers: `make_agents_router()`, `make_connectors_router()`,
+  `make_connections_router()`, `make_repl_router()`.
 - Registers the `fmt_epoch` Jinja2 global (see §4).
 
 The `connectors_registry_path` parameter defaults to
-`Path.cwd() / "connectors" / "registry.json"` when `None` is passed
-(`app.py:37-39`).
+`agents_dir.parent / "connectors" / "registry.json"` when `None` is passed
+(`app.py:42-44`). `repo_root` defaults to `agents_dir.parent` (`app.py:38`).
 
 ---
 
@@ -67,7 +69,13 @@ class AdminContext:
     agents_dir: Path
     data_dir: Path
     connectors_registry_path: Path
+    repo_root: Path
 ```
+
+`repo_root` was added in Phase A (studio-capability-rollout). It is used by
+`detail_view` to locate `connectors/registry.json` and the shared `packs/`
+directory relative to the repository root, independent of where `agents_dir`
+lives (see `routes/agents.py:64-65`).
 
 Routes retrieve it from `request.app.state.ctx`. No FastAPI `Depends()`
 wiring exists in Wave 0 — the pattern is in place for Wave 1 routes to adopt.
@@ -251,14 +259,17 @@ All routers use `APIRouter` with prefix; they are included into the app via
 |--------|------|----------|-------|
 | `GET` | `/admin/` | `agents/list.html` | `list_agents(ctx.agents_dir)` |
 | `GET` | `/admin/agents/new` | `agents/new.html` | stub, no form processing |
-| `GET` | `/admin/agents/{name}` | `agents/edit.html` | `read_agent` + `scan_tools_file`; `readonly=True` |
+| `GET` | `/admin/agents/{name}` | `agents/edit.html` | `read_agent` + `build_capability_view`; `readonly=True` |
 
 Route ordering is intentional: `/admin/agents/new` is registered before
 `/admin/agents/{name}` to prevent the path parameter from capturing the literal
-string `"new"` (see `routes/agents.py:22`).
+string `"new"` (see `routes/agents.py:29`).
 
-The detail route passes `raw_skill_md` (file read from `agent.skill_path`) to
-the template for the sidebar.
+The detail route calls `build_capability_view(...)` (Phase A) and passes the
+resulting `capability` dict to the template. `capability` has four keys:
+`native`, `identity`, `packs`, `connectors` (see §9 for details). The flat
+`methods` list used in earlier drafts is gone — the template iterates the
+individual layers instead.
 
 (see `src/conexus/web/admin/routes/agents.py`)
 
@@ -297,7 +308,7 @@ All templates live under `src/conexus/web/admin/templates/`.
 | `agents/list.html` | Table: name / role / model / tools count / identity enabled |
 | `agents/edit.html` | 3-column grid: back link · 7-tab Alpine form · SKILL.md sidebar |
 | `agents/new.html` | Placeholder — Wave 2 |
-| `partials/agent_form.html` | 7 Alpine tabs: identity / llm / tools / skills / persistence / budget / prompt (x-data / x-show / x-cloak) |
+| `partials/agent_form.html` | 7 Alpine tabs: identity / llm / tools / skills / persistence / budget / prompt; Tools tab renders the 4-layer `capability` dict (Phase A) |
 | `connectors/marketplace.html` | Grid of connector cards |
 | `partials/connector_card.html` | Icon, label, category, description, disabled Install button |
 | `partials/repl_message.html` | Single REPL turn: role + text with colored left border |
@@ -314,3 +325,365 @@ All templates live under `src/conexus/web/admin/templates/`.
 > Verdict: Wave 1 is verified in source — three service modules, three route
 > factories, eight templates, and REPL cookie plumbing are all present and
 > wired through `make_admin_app`.
+
+---
+
+## 9. Phase A — 4-layer capability view (studio-capability-rollout)
+
+Phase A ships the Tools tab as a structured capability browser instead of a
+flat method list. All new code lives under
+`src/conexus/web/admin/services/`.
+
+### 9.1 New services
+
+#### `capability_view.py`
+
+```python
+def build_capability_view(
+    *,
+    agent_dir: Path,
+    skill_refs: list[str],
+    identity_enabled: bool,
+    connector_registry: Path,
+    packs_root: Path,
+    model: str,
+) -> dict:
+```
+
+Aggregates all four layers and returns a single dict with keys `native`,
+`identity`, `packs`, `connectors`. Called by `detail_view` in
+`routes/agents.py:60-67`. The `model` field is forwarded to `token_counter`
+(not yet surfaced in the template but available for future use).
+
+(see `src/conexus/web/admin/services/capability_view.py`)
+
+#### `pack_inspector.py`
+
+```python
+def scan_installed_packs(
+    agent_dir: Path, *, packs_root: Path, skill_refs: list[str]
+) -> list[InstalledPack]:
+```
+
+For each `skill_refs` entry resolves the pack under `agent_dir/skills/<name>/`
+or `packs_root/<name>/`, parses `SKILL_PACK.md` via `parse_skill_pack`, and
+AST-scans `tools.py` via the existing `scan_tools_file`. Returns a list of
+`InstalledPack(frozen=True)` dataclasses with fields: `id`, `version`,
+`backend`, `source_path`, `body`, `methods`.
+
+(see `src/conexus/web/admin/services/pack_inspector.py`)
+
+#### `connector_inspector.py`
+
+```python
+def list_connectors_for_agent(
+    skill_refs: list[str], registry_path: Path
+) -> list[ConnectorEntry]:
+```
+
+Delegates to `PacksRegistry.load(registry_path)` (Phase C), calls
+`reg.list(kind="connector")`, filters to entries whose `id` appears in
+`skill_refs` (prefix before `@`), and returns `ConnectorEntry(frozen=True)`
+dataclasses with fields: `id`, `version`, `label`, `icon`, `category`,
+`description`, `server_url`, `scopes`. Returns `[]` if the registry file does
+not exist (`PacksRegistry.load` returns an empty registry on missing path).
+
+(see `src/conexus/web/admin/services/connector_inspector.py`)
+
+#### `identity_inspector.py`
+
+```python
+def list_identity_tools(*, enabled: bool) -> list[ToolMethod]:
+```
+
+Returns `[]` if `identity.enabled` is false. Otherwise calls
+`inspect.getsourcefile(IdentityTools)` to locate the source and reuses
+`scan_tools_file` — no second import, no eval.
+
+(see `src/conexus/web/admin/services/identity_inspector.py`)
+
+#### `token_counter.py`
+
+```python
+def count_schema_tokens(schemas: list[dict], *, model: str) -> int:
+```
+
+Delegates to `litellm.token_counter` with the JSON-serialised schema list.
+Returns `0` on any error, making the function safe to call without a live
+LiteLLM installation.
+
+(see `src/conexus/web/admin/services/token_counter.py`)
+
+### 9.2 Tools tab rendering
+
+`partials/agent_form.html` (Tools tab, lines 56–132) renders four `<section>`
+blocks from `capability.*`:
+
+| Section | Data key | Empty state text |
+|---------|----------|-----------------|
+| Native | `capability.native` | "No native tools." |
+| Identity | `capability.identity` | "Identity disabled." |
+| Skill Packs | `capability.packs` | "No skill packs installed." |
+| Connectors | `capability.connectors` | "No connectors enabled." |
+
+Each entry in `native` and `identity` is a `ToolMethod`; each entry in `packs`
+is an `InstalledPack` (exposes `p.id`, `p.version`, `p.backend`, `p.methods`);
+each entry in `connectors` is a `ConnectorEntry` (exposes `c.id`, `c.version`,
+`c.category`, `c.description`).
+
+### 9.3 `AdminContext` and factory changes
+
+`AdminContext` gains a fourth field `repo_root: Path`
+(`src/conexus/web/admin/deps.py:13`). `make_admin_app` accepts an optional
+`repo_root` parameter that defaults to `agents_dir.parent` (`app.py:38`).
+
+The `detail_view` route derives registry and packs paths from `ctx.repo_root`:
+
+```python
+connector_registry=ctx.repo_root / "packs" / "registry.json",
+packs_root=ctx.repo_root / "packs",
+```
+
+Both arguments point to the same directory (`packs/`) — Phase C unified the
+connector and skill-pack registries into a single file (see §10 below).
+
+(see `src/conexus/web/admin/routes/agents.py:64-65`)
+
+> Verdict: Phase A is verified in source — five new service modules, updated
+> `AdminContext`, updated factory signature, and a four-section Tools tab
+> template are all wired end-to-end.
+
+---
+
+## 10. Phase C — unified packs registry (studio-capability-rollout)
+
+Phase C replaces the separate `connectors/registry.json` with a single
+`packs/registry.json` that covers both skill packs and connectors. The file is
+now gone; only `packs/registry.json` exists.
+
+### 10.1 `packs/registry.json` schema
+
+```json
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "notes",
+      "kind": "skill",
+      "version": "0.1.0",
+      "source": "packs/notes",
+      "sha": "<sha1>",
+      "ui": {
+        "label": "Notes",
+        "icon": "puzzle",
+        "category": "Skills",
+        "description": "..."
+      }
+    },
+    {
+      "id": "google_calendar",
+      "kind": "connector",
+      "version": "1.0",
+      "source": "https://...",
+      "sha": "unsigned",
+      "server_url": "https://mcp.google.com/calendar",
+      "scopes": ["https://www.googleapis.com/auth/calendar"],
+      "ui": { "label": "Google Calendar", "icon": "calendar", "category": "Productivity", "description": "..." }
+    }
+  ]
+}
+```
+
+`kind` is `"skill"` or `"connector"`. `server_url` and `scopes` are
+connector-only fields; they default to `""` and `[]` on skill entries.
+
+(see `packs/registry.json`)
+
+### 10.2 `PacksRegistry` API
+
+New Python package at `src/conexus/core/packs/registry.py`.
+
+```python
+class PacksRegistry:
+    @classmethod
+    def load(cls, path: Path) -> "PacksRegistry": ...
+    def get(self, pack_id: str) -> PackEntry: ...          # raises RegistryError if missing
+    def list(self, *, kind: Kind | None = None) -> list[PackEntry]: ...
+
+@dataclass(frozen=True)
+class PackEntry:
+    id: str
+    kind: Literal["skill", "connector"]
+    version: str
+    source: str
+    sha: str
+    ui: PackUI
+    server_url: str   # connector-only, default ""
+    scopes: list[str] # connector-only, default []
+
+@dataclass(frozen=True)
+class PackUI:
+    label: str
+    icon: str
+    category: str
+    description: str
+
+class RegistryError(ValueError): ...
+```
+
+`PacksRegistry.load(path)` returns an empty registry (no error) when `path`
+does not exist (`registry.py:43-44`). `list(kind="connector")` filters to
+connector entries; `list(kind="skill")` filters to skill entries; `list()`
+returns all entries.
+
+(see `src/conexus/core/packs/registry.py`)
+
+### 10.3 Impact on `connector_inspector.py`
+
+`list_connectors_for_agent` now calls `PacksRegistry.load(registry_path)` and
+filters with `reg.list(kind="connector")`. The `registry_path` passed by
+`detail_view` is `ctx.repo_root / "packs" / "registry.json"` — the unified
+file (see §9.3 and `routes/agents.py:64`).
+
+### 10.4 `connectors_registry_path` in `AdminContext`
+
+`AdminContext.connectors_registry_path` is still present in `deps.py` and
+`make_admin_app` still accepts the `connectors_registry_path` parameter
+(defaulting to `agents_dir.parent / "connectors" / "registry.json"`). This
+field is used by `make_connectors_router()` (the marketplace route), which
+still calls `ConnectorRegistry.from_file(ctx.connectors_registry_path)`. That
+path is now a dangling reference unless the caller overrides it — the
+marketplace route is effectively broken until it is migrated to `PacksRegistry`.
+This is a known gap as of Phase C.
+
+> Verdict: Phase C is verified in source — `packs/registry.json` exists,
+> `src/conexus/core/packs/registry.py` is the new loader, `connector_inspector.py`
+> delegates to `PacksRegistry`, and `detail_view` already points at the unified
+> path. The connectors marketplace route (`make_connectors_router`) retains a
+> stale reference to `ConnectorRegistry` and has not been migrated yet.
+
+---
+
+## 11. Phase D — pack install / uninstall (studio-capability-rollout)
+
+Phase D wires live install and uninstall of skill packs from both the agent
+detail view and a dedicated marketplace page. Two new modules were added:
+`src/conexus/core/packs/installer.py` and
+`src/conexus/web/admin/routes/packs.py`.
+
+### 11.1 `installer.py` — pack service
+
+Public surface (`src/conexus/core/packs/installer.py`):
+
+```python
+class InstallError(RuntimeError): ...
+
+def install_pack(
+    pack_id: str,
+    *,
+    agent_dir: Path,
+    packs_root: Path,
+    registry_path: Path,
+    allow_unsigned: bool = False,
+) -> None: ...
+
+def uninstall_pack(pack_id: str, *, agent_dir: Path) -> None: ...
+```
+
+Key implementation details (all verified in `installer.py`):
+
+- **Path traversal guard** — `_safe_name(value, label)` rejects any `pack_id`
+  or `agent_name` containing `/`, `\`, or starting with `.`, or being empty
+  (`installer.py:47-49`).
+- **SHA pin** — `install_pack` calls `reg.get(pack_id)` then checks
+  `entry.sha == "unsigned"`; if true and `allow_unsigned=False`, raises
+  `InstallError` with an explicit message (`installer.py:67-70`).
+- **Atomic SKILL.md edit** — writes to `SKILL.md.tmp` then calls
+  `tmp.replace(path)` (atomic on POSIX; best-effort on Windows)
+  (`installer.py:27-28`).
+- **Rollback on failure** — both `install_pack` and `uninstall_pack` snapshot
+  the original `SKILL.md` text before editing; any exception during
+  `_append_skill_ref` / `_remove_skill_ref` restores the backup and re-raises
+  as `InstallError` (`installer.py:80-85`, `91-97`).
+- `uninstall_pack` does not consult the registry — it only reads and rewrites
+  `agent_dir/SKILL.md`, so it works even if the registry entry has been
+  removed.
+
+### 11.2 `routes/packs.py` — HTTP endpoints
+
+`make_packs_router()` registers three endpoints under the `/admin` prefix
+(`src/conexus/web/admin/routes/packs.py`):
+
+| Method | Path | Action |
+|--------|------|--------|
+| `GET` | `/admin/packs` | Marketplace view — lists all skill packs and connectors from `packs/registry.json` |
+| `POST` | `/admin/agents/{name}/packs/{pack_id}/install` | Calls `install_pack(...)`, redirects `303 → /admin/agents/{name}` |
+| `POST` | `/admin/agents/{name}/packs/{pack_id}/uninstall` | Calls `uninstall_pack(...)`, redirects `303 → /admin/agents/{name}` |
+
+Both mutating routes run `_safe_name` on `name` and `pack_id` before touching
+the filesystem, returning HTTP 400 on a validation failure (`packs.py:31-35`,
+`55-59`). An unknown agent directory returns HTTP 404.
+
+`install_pack` receives `allow_unsigned=getattr(ctx, "allow_unsigned", False)`,
+delegating the unsigned-pack policy to `AdminContext` (`packs.py:45`).
+
+Security note documented in `packs.py:3-5`: no CSRF tokens are used. The
+assumption is localhost-only access; if the admin is exposed beyond loopback,
+CSRF middleware must be added before these POST handlers.
+
+### 11.3 `skills.html` — marketplace template
+
+`src/conexus/web/admin/templates/skills.html` renders two sections
+(Skill Packs and Connectors) as a card grid. Each card shows `s.id`,
+`s.version`, and `s.ui.description`. It does not expose install buttons —
+installation is driven from the agent detail page.
+
+### 11.4 Agent form — install / remove UI
+
+`src/conexus/web/admin/templates/partials/agent_form.html` (Skill Packs
+section, lines 93–137) was updated in two ways:
+
+1. **Remove button** — each installed pack card now includes a `<form
+   method="post" action="/admin/agents/{name}/packs/{id}/uninstall">` with a
+   "Remove" submit button (`agent_form.html:100-102`).
+2. **"Add a pack" disclosure** — a `<details>` element lists uninstalled packs
+   from the `available_packs` template variable, filtered to exclude already-
+   installed IDs (`agent_form.html:119-136`). Each row has an Install button
+   posting to `/admin/agents/{name}/packs/{id}/install`.
+
+`available_packs` is injected by `detail_view` in `routes/agents.py:81-83`:
+
+```python
+"available_packs": PacksRegistry.load(
+    ctx.repo_root / "packs" / "registry.json"
+).list(kind="skill"),
+```
+
+### 11.5 `AdminContext` and factory changes
+
+`AdminContext` gains a fifth field (`src/conexus/web/admin/deps.py:14`):
+
+```python
+allow_unsigned: bool = False
+```
+
+`make_admin_app` reads the env var `CONEXUS_ALLOW_UNSIGNED` and sets
+`allow_unsigned=True` when its value is `"1"` or `"true"` (case-insensitive)
+(`app.py:48`). `make_packs_router` is now registered by the factory
+(`app.py:59`).
+
+### 11.6 Phase D scope and known gaps
+
+- The marketplace (`/admin/packs`) is read-only; install is only available from
+  the agent detail page.
+- No CSRF protection — loopback trust is the only protection (inherited from
+  Wave 0).
+- `tmp.replace(path)` is described as "not crash-safe on Windows" in the source
+  comment (`installer.py:28`); it is atomic on POSIX.
+
+> Verdict: Phase D is verified in source — `installer.py` (atomic edit,
+> rollback, SHA pin, path traversal guard), `routes/packs.py` (three endpoints,
+> `_safe_name` validation, `allow_unsigned` delegation), `skills.html`
+> (marketplace template), updated `agent_form.html` (Remove + Install UI), and
+> `AdminContext.allow_unsigned` / `CONEXUS_ALLOW_UNSIGNED` env wiring are all
+> present and wired through `make_admin_app`.

@@ -114,6 +114,13 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
   client_secret_enc BLOB,
   registered_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS pack_migrations (
+    pack_id     TEXT NOT NULL,
+    version     TEXT NOT NULL,
+    applied_at  TEXT NOT NULL,
+    PRIMARY KEY (pack_id, version)
+);
 """
 
 
@@ -354,3 +361,27 @@ class SqliteStore:
                 (kind, ref_id, agent_name),
             ).fetchone()
             return row is not None and row["sent_at"] is not None
+
+    # ----- pack migrations -----
+
+    def apply_pack_migrations(self, pack_id: str, sql_dir: Path) -> None:
+        """Apply unapplied SQL files in sql_dir alphabetically. Tracks via pack_migrations."""
+        if not sql_dir.exists():
+            return
+        files = sorted(sql_dir.glob("*.sql"))
+        with self.connect() as conn:
+            applied = {
+                r["version"] for r in conn.execute(
+                    "SELECT version FROM pack_migrations WHERE pack_id=?", (pack_id,)
+                ).fetchall()
+            }
+            for f in files:
+                version = f.stem
+                if version in applied:
+                    continue
+                conn.executescript(f.read_text(encoding="utf-8"))
+                conn.execute(
+                    "INSERT INTO pack_migrations (pack_id, version, applied_at) VALUES (?, ?, ?)",
+                    (pack_id, version, _now_iso()),
+                )
+                conn.commit()
