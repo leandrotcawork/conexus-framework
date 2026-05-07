@@ -4,12 +4,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .deps import AdminContext
+from .routes.agents import make_agents_router
+from .routes.connectors import make_connectors_router
+from .routes.repl import make_repl_router
 
 _HERE = Path(__file__).parent
 _TEMPLATES = Jinja2Templates(directory=str(_HERE / "templates"))
@@ -44,10 +46,8 @@ def make_admin_app(
     app.state.templates = _TEMPLATES
     app.mount("/admin/static", StaticFiles(directory=str(_HERE / "static")), name="static")
 
-    @app.get("/admin/", response_class=HTMLResponse)
-    async def root(request: Request) -> HTMLResponse:
-        return request.app.state.templates.TemplateResponse(
-            request, "base.html", {"title": "Conexus Studio", "body_partial": None}
-        )
+    app.include_router(make_agents_router())
+    app.include_router(make_connectors_router())
+    app.include_router(make_repl_router())
 
     return app

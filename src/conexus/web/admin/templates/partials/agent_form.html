@@ -1,0 +1,57 @@
+<h2 class="text-xl font-semibold mb-3">{{ agent.name }}</h2>
+<div x-data="{ tab: 'identity' }">
+  <nav class="flex gap-3 border-b mb-3 text-sm">
+    {% for t in ["identity","llm","tools","skills","persistence","budget","prompt"] %}
+    <button @click="tab='{{ t }}'" :class="tab==='{{ t }}' ? 'border-b-2 border-slate-900 -mb-px' : 'text-slate-500'"
+            class="pb-2 capitalize">{{ t }}</button>
+    {% endfor %}
+  </nav>
+
+  <div x-show="tab==='identity'" class="space-y-2">
+    <p><b>Name:</b> {{ fm.name }}</p>
+    <p><b>Role:</b> {{ fm.role }}</p>
+    <p><b>Goal:</b><pre class="text-xs bg-slate-50 p-2 rounded whitespace-pre-wrap">{{ fm.goal }}</pre></p>
+  </div>
+
+  <div x-show="tab==='llm'" x-cloak class="space-y-1 text-sm">
+    <p><b>Provider:</b> {{ fm.llm.provider }}</p>
+    <p><b>Model:</b> {{ fm.llm.model }}</p>
+    <p><b>Temperature:</b> {{ fm.llm.temperature }}</p>
+  </div>
+
+  <div x-show="tab==='tools'" x-cloak>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-100"><tr><th class="text-left p-1">Method</th><th class="text-left p-1">Allowed</th><th class="text-left p-1">Description</th></tr></thead>
+      <tbody>
+        {% for m in methods %}
+        <tr class="border-t">
+          <td class="p-1 font-mono">{{ m.name }}</td>
+          <td class="p-1">{{ "✔" if m.name in fm.tools else "—" }}</td>
+          <td class="p-1 text-slate-600">{{ m.description or m.docstring or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div x-show="tab==='skills'" x-cloak>
+    {% if fm.skills %}<ul class="list-disc pl-5">{% for s in fm.skills %}<li class="font-mono text-sm">{{ s }}</li>{% endfor %}</ul>
+    {% else %}<p class="text-slate-500 text-sm">No skills attached.</p>{% endif %}
+  </div>
+
+  <div x-show="tab==='persistence'" x-cloak class="text-sm">
+    {% if fm.identity and fm.identity.enabled %}
+      <p>Identity <b>enabled</b>. Blocks: {{ fm.identity.blocks | length }}</p>
+    {% else %}<p class="text-slate-500">Identity disabled.</p>{% endif %}
+  </div>
+
+  <div x-show="tab==='budget'" x-cloak class="text-sm">
+    {% if fm.budget %}
+      <p>Daily: ${{ fm.budget.daily_usd }} &bull; Monthly: ${{ fm.budget.monthly_usd }} &bull; on_exceed: {{ fm.budget.on_exceed }}</p>
+    {% else %}<p class="text-slate-500">No budget set.</p>{% endif %}
+  </div>
+
+  <div x-show="tab==='prompt'" x-cloak>
+    <pre class="text-xs bg-slate-50 p-2 rounded whitespace-pre-wrap">{{ body }}</pre>
+  </div>
+</div>

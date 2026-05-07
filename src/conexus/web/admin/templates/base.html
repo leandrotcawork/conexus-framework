@@ -18,8 +18,6 @@
       <a href="/admin/connections" class="hover:underline">Connections</a>
     </nav>
   </header>
-  <main class="p-6">
-    {% if body_partial %}{% include body_partial %}{% else %}<p class="text-slate-500">Welcome.</p>{% endif %}
-  </main>
+  <main class="p-6">{% block content %}{% endblock %}</main>
 </body>
 </html>
