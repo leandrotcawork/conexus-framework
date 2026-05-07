@@ -39,7 +39,7 @@ Synthesis: 13 → 14.
 Direction: 15 (intent only, not commitment).
 Tutorials (ship something): 16 → 17 → 18 → 19.
 Connector marketplace: 20 (auth flow + security model) → then 16 §9 (install + wire).
-Studio UI: 21 (Wave 0 scaffold → Wave 1 agent/connector/REPL views → Phase A 4-layer capability tab).
+Studio UI: 21 (Wave 0 scaffold → Wave 1 agent/connector/REPL views → Phase A 4-layer capability tab → Phase C unified packs registry).
 
 ## Conventions
 

@@ -20,7 +20,8 @@ Key modules:
 | AES-GCM token vault + HKDF key derivation | `src/conexus/core/vault/` |
 | MCP 2025-06-18 Streamable HTTP backend | `src/conexus/core/backends/mcp_http_backend.py` |
 | ConnectorPack parser | `src/conexus/core/connectors/pack.py` |
-| ConnectorRegistry (seed file) | `src/conexus/core/connectors/registry.py` · `connectors/registry.json` |
+| ConnectorRegistry (legacy marketplace loader) | `src/conexus/core/connectors/registry.py` |
+| PacksRegistry (unified registry, Phase C) | `src/conexus/core/packs/registry.py` · `packs/registry.json` |
 | FastAPI OAuth router (`/oauth/start`, `/oauth/callback`) | `src/conexus/web/oauth_router.py` |
 | Telegram magic-link factory | `src/conexus/adapters/telegram_auth.py` |
 | CLI commands | `src/conexus/cli/__main__.py` (`_cmd_connectors`) |
@@ -136,9 +137,15 @@ stored in the database.
 
 ## 5. ConnectorRegistry and CLI
 
-`ConnectorRegistry` (`src/conexus/core/connectors/registry.py`) loads
-`connectors/registry.json` — a JSON file with a `connectors` array. The seed
-registry ships with `google_calendar` (`connectors/registry.json`).
+`ConnectorRegistry` (`src/conexus/core/connectors/registry.py`) loads a JSON
+file with a `connectors` array. It is still used by the Studio marketplace
+route (`make_connectors_router`) via `ctx.connectors_registry_path`.
+
+**Phase C note:** `connectors/registry.json` was deleted. The seed connector
+data (e.g. `google_calendar`) now lives in `packs/registry.json` under
+`kind: "connector"` entries, loaded by `PacksRegistry`
+(`src/conexus/core/packs/registry.py`). `ConnectorRegistry` has not been
+migrated — the marketplace route is a known gap (see `21-conexus-studio.md §10.4`).
 
 CLI commands (`conexus connectors <action>`):
 

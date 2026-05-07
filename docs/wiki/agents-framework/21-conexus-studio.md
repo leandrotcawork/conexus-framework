@@ -381,11 +381,12 @@ def list_connectors_for_agent(
 ) -> list[ConnectorEntry]:
 ```
 
-Reads `registry.json`, filters to connectors whose `name` appears in
+Delegates to `PacksRegistry.load(registry_path)` (Phase C), calls
+`reg.list(kind="connector")`, filters to entries whose `id` appears in
 `skill_refs` (prefix before `@`), and returns `ConnectorEntry(frozen=True)`
 dataclasses with fields: `id`, `version`, `label`, `icon`, `category`,
 `description`, `server_url`, `scopes`. Returns `[]` if the registry file does
-not exist.
+not exist (`PacksRegistry.load` returns an empty registry on missing path).
 
 (see `src/conexus/web/admin/services/connector_inspector.py`)
 
@@ -439,12 +440,124 @@ each entry in `connectors` is a `ConnectorEntry` (exposes `c.id`, `c.version`,
 The `detail_view` route derives registry and packs paths from `ctx.repo_root`:
 
 ```python
-connector_registry=ctx.repo_root / "connectors" / "registry.json",
+connector_registry=ctx.repo_root / "packs" / "registry.json",
 packs_root=ctx.repo_root / "packs",
 ```
+
+Both arguments point to the same directory (`packs/`) — Phase C unified the
+connector and skill-pack registries into a single file (see §10 below).
 
 (see `src/conexus/web/admin/routes/agents.py:64-65`)
 
 > Verdict: Phase A is verified in source — five new service modules, updated
 > `AdminContext`, updated factory signature, and a four-section Tools tab
 > template are all wired end-to-end.
+
+---
+
+## 10. Phase C — unified packs registry (studio-capability-rollout)
+
+Phase C replaces the separate `connectors/registry.json` with a single
+`packs/registry.json` that covers both skill packs and connectors. The file is
+now gone; only `packs/registry.json` exists.
+
+### 10.1 `packs/registry.json` schema
+
+```json
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "notes",
+      "kind": "skill",
+      "version": "0.1.0",
+      "source": "packs/notes",
+      "sha": "<sha1>",
+      "ui": {
+        "label": "Notes",
+        "icon": "puzzle",
+        "category": "Skills",
+        "description": "..."
+      }
+    },
+    {
+      "id": "google_calendar",
+      "kind": "connector",
+      "version": "1.0",
+      "source": "https://...",
+      "sha": "unsigned",
+      "server_url": "https://mcp.google.com/calendar",
+      "scopes": ["https://www.googleapis.com/auth/calendar"],
+      "ui": { "label": "Google Calendar", "icon": "calendar", "category": "Productivity", "description": "..." }
+    }
+  ]
+}
+```
+
+`kind` is `"skill"` or `"connector"`. `server_url` and `scopes` are
+connector-only fields; they default to `""` and `[]` on skill entries.
+
+(see `packs/registry.json`)
+
+### 10.2 `PacksRegistry` API
+
+New Python package at `src/conexus/core/packs/registry.py`.
+
+```python
+class PacksRegistry:
+    @classmethod
+    def load(cls, path: Path) -> "PacksRegistry": ...
+    def get(self, pack_id: str) -> PackEntry: ...          # raises RegistryError if missing
+    def list(self, *, kind: Kind | None = None) -> list[PackEntry]: ...
+
+@dataclass(frozen=True)
+class PackEntry:
+    id: str
+    kind: Literal["skill", "connector"]
+    version: str
+    source: str
+    sha: str
+    ui: PackUI
+    server_url: str   # connector-only, default ""
+    scopes: list[str] # connector-only, default []
+
+@dataclass(frozen=True)
+class PackUI:
+    label: str
+    icon: str
+    category: str
+    description: str
+
+class RegistryError(ValueError): ...
+```
+
+`PacksRegistry.load(path)` returns an empty registry (no error) when `path`
+does not exist (`registry.py:43-44`). `list(kind="connector")` filters to
+connector entries; `list(kind="skill")` filters to skill entries; `list()`
+returns all entries.
+
+(see `src/conexus/core/packs/registry.py`)
+
+### 10.3 Impact on `connector_inspector.py`
+
+`list_connectors_for_agent` now calls `PacksRegistry.load(registry_path)` and
+filters with `reg.list(kind="connector")`. The `registry_path` passed by
+`detail_view` is `ctx.repo_root / "packs" / "registry.json"` — the unified
+file (see §9.3 and `routes/agents.py:64`).
+
+### 10.4 `connectors_registry_path` in `AdminContext`
+
+`AdminContext.connectors_registry_path` is still present in `deps.py` and
+`make_admin_app` still accepts the `connectors_registry_path` parameter
+(defaulting to `agents_dir.parent / "connectors" / "registry.json"`). This
+field is used by `make_connectors_router()` (the marketplace route), which
+still calls `ConnectorRegistry.from_file(ctx.connectors_registry_path)`. That
+path is now a dangling reference unless the caller overrides it — the
+marketplace route is effectively broken until it is migrated to `PacksRegistry`.
+This is a known gap as of Phase C.
+
+> Verdict: Phase C is verified in source — `packs/registry.json` exists,
+> `src/conexus/core/packs/registry.py` is the new loader, `connector_inspector.py`
+> delegates to `PacksRegistry`, and `detail_view` already points at the unified
+> path. The connectors marketplace route (`make_connectors_router`) retains a
+> stale reference to `ConnectorRegistry` and has not been migrated yet.
