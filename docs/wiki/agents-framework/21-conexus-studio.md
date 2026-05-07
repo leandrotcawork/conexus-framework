@@ -641,15 +641,26 @@ installation is driven from the agent detail page.
 ### 11.4 Agent form — install / remove UI
 
 `src/conexus/web/admin/templates/partials/agent_form.html` (Skill Packs
-section, lines 93–137) was updated in two ways:
+section, lines 93–141) was updated in two ways:
 
-1. **Remove button** — each installed pack card now includes a `<form
-   method="post" action="/admin/agents/{name}/packs/{id}/uninstall">` with a
-   "Remove" submit button (`agent_form.html:100-102`).
+1. **Remove button** — each installed pack card includes a
+   `<button type="button" hx-post="/admin/agents/{name}/packs/{id}/uninstall"
+   hx-swap="none" hx-on::after-request="window.location.reload()">` element
+   (`agent_form.html:100-104`). No nested `<form>` is used; HTMX issues the
+   POST directly from the button so the outer agent-save form is never
+   inadvertently submitted (see commit d5abb6c — nested forms are invalid
+   HTML5 and browsers strip them, which previously caused Remove to submit the
+   outer save form and wipe `tools:` from `SKILL.md`).
 2. **"Add a pack" disclosure** — a `<details>` element lists uninstalled packs
    from the `available_packs` template variable, filtered to exclude already-
-   installed IDs (`agent_form.html:119-136`). Each row has an Install button
-   posting to `/admin/agents/{name}/packs/{id}/install`.
+   installed IDs (`agent_form.html:121-140`). Each row has an Install button
+   using the same HTMX-button pattern:
+   `<button type="button" hx-post="/admin/agents/{name}/packs/{id}/install"
+   hx-swap="none" hx-on::after-request="window.location.reload()">`.
+
+Both buttons set `hx-swap="none"` — HTMX discards the server response body —
+and reload the page via the `hx-on::after-request` hook, which re-renders the
+full capability view with updated pack state.
 
 `available_packs` is injected by `detail_view` in `routes/agents.py:81-83`:
 
@@ -684,6 +695,7 @@ allow_unsigned: bool = False
 > Verdict: Phase D is verified in source — `installer.py` (atomic edit,
 > rollback, SHA pin, path traversal guard), `routes/packs.py` (three endpoints,
 > `_safe_name` validation, `allow_unsigned` delegation), `skills.html`
-> (marketplace template), updated `agent_form.html` (Remove + Install UI), and
+> (marketplace template), updated `agent_form.html` (Remove + Install buttons
+> as HTMX `hx-post` buttons with no nested `<form>`, per commit d5abb6c), and
 > `AdminContext.allow_unsigned` / `CONEXUS_ALLOW_UNSIGNED` env wiring are all
 > present and wired through `make_admin_app`.
