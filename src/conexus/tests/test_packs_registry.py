@@ -61,3 +61,17 @@ def test_filter_by_kind(tmp_path: Path):
     assert [e.id for e in reg.list(kind="skill")] == ["a"]
     assert [e.id for e in reg.list(kind="connector")] == ["b"]
     assert {e.id for e in reg.list()} == {"a", "b"}
+
+
+def test_load_raises_on_malformed_json(tmp_path: Path):
+    p = tmp_path / "packs" / "registry.json"
+    p.parent.mkdir(parents=True)
+    p.write_text("{not valid json")
+    with pytest.raises(RegistryError, match="invalid registry JSON"):
+        PacksRegistry.load(p)
+
+
+def test_load_raises_on_missing_required_field(tmp_path: Path):
+    p = _make_registry(tmp_path, [{"id": "x", "kind": "skill"}])  # missing version/source/sha
+    with pytest.raises(RegistryError, match="missing required field"):
+        PacksRegistry.load(p)
