@@ -1,0 +1,8 @@
+<div class="bg-white border rounded p-3 text-sm">
+  <h4 class="font-semibold mb-2">Adding {{ connector }}{% if agent %} → {{ agent }}{% endif %}</h4>
+  <ul class="list-disc pl-5">
+    <li>Tools: +{{ d.added_tools }}</li>
+    <li>Token budget: ~{{ d.estimated_tokens }} tokens/turn</li>
+    <li>Cost estimate: +${{ "%.5f"|format(d.estimated_cost_per_turn_usd) }}/turn</li>
+  </ul>
+</div>
