@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import sys
 from pathlib import Path
 
 from conexus.core.agent_handler import handle_agent_message
@@ -266,7 +265,29 @@ def _cmd_connectors(args: argparse.Namespace) -> None:
         print(f"{base}/oauth/start?state={state}")
 
 
-def main() -> None:
+def _handle_studio(args: argparse.Namespace) -> None:
+    import webbrowser
+
+    import uvicorn
+
+    from conexus.web.admin.app import make_admin_app
+
+    agents_dir = Path(os.environ.get("CONEXUS_AGENTS_DIR", "./agents"))
+    data_dir = Path(os.environ.get("CONEXUS_DATA_DIR", "./data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    app = make_admin_app(agents_dir=agents_dir, data_dir=data_dir)
+    url = f"http://127.0.0.1:{args.port}/admin/"
+    print(f"[conexus] Studio running at {url}")
+    if not args.no_browser:
+        try:
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001
+            pass
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conexus",
         description="Conexus agent framework CLI",
@@ -325,13 +346,22 @@ def main() -> None:
     conn_connect.add_argument("--registry", default=None)
     conn_connect.set_defaults(func=_cmd_connectors, action="connect")
 
+    studio_p = sub.add_parser("studio", help="Start Conexus Studio web UI on 127.0.0.1")
+    studio_p.add_argument("--port", type=int, default=8765)
+    studio_p.add_argument("--no-browser", action="store_true")
+    studio_p.set_defaults(func=_handle_studio)
+
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
-
-    if not hasattr(args, "func"):
+    func = getattr(args, "func", None)
+    if func is None:
         parser.print_help()
-        sys.exit(0)
-
-    args.func(args)
+        return
+    func(args)
 
 
 if __name__ == "__main__":
