@@ -1,45 +1,84 @@
-"""LLM pricing table. Verify numbers on provider pages before deploy."""
+"""LLM utilities — provider list and cost calculation via LiteLLM."""
 
 from __future__ import annotations
 
-# USD per 1M tokens. input = prompt tokens; output = completion tokens.
-PRICING: dict[str, dict[str, float]] = {
-    # Anthropic
-    "anthropic/claude-haiku-4-5":     {"input": 1.00,  "output": 5.00},
-    "anthropic/claude-sonnet-4-5":    {"input": 3.00,  "output": 15.00},
-    "anthropic/claude-opus-4-6":      {"input": 15.00, "output": 75.00},
-    # OpenAI
-    "openai/gpt-4o-mini":             {"input": 0.15,  "output": 0.60},
-    "openai/gpt-4o":                  {"input": 2.50,  "output": 10.00},
-    # Google
-    "gemini/gemini-2.5-flash":        {"input": 0.15,  "output": 0.60},
-    "gemini/gemini-2.5-pro":          {"input": 1.25,  "output": 10.00},
-    "gemini/gemini-3.1-pro-preview":  {"input": 2.00,  "output": 12.00},
-    "gemini/gemini-2.0-flash":        {"input": 0.075, "output": 0.30},
-    "gemini/gemini-1.5-pro":          {"input": 1.25,  "output": 5.00},
-    # DeepSeek (V3.2 — both models same pricing, updated 2026-04)
-    "deepseek/deepseek-chat":         {"input": 0.28,  "output": 0.42},
-    "deepseek/deepseek-reasoner":     {"input": 0.28,  "output": 0.42},
-    # Groq
-    "groq/llama-3.3-70b-versatile":   {"input": 0.59,  "output": 0.79},
-}
+# Providers we support (we own API key management for these).
+# Model names within each provider are derived from LiteLLM's catalog.
+SUPPORTED_PROVIDERS: list[str] = [
+    "openai",
+    "anthropic",
+    "gemini",
+    "deepseek",
+    "groq",
+]
+
+# Keywords that indicate non-chat-completion specialized models.
+_EXCLUDE: tuple[str, ...] = (
+    "audio", "realtime", "tts", "search", "native", "live",
+    "robotics", "container", "lyria", "learnlm", "image",
+    "embedding", "ft:", "video", "vision", "ocr",
+    "computer-use", "customtools",
+)
 
 USD_TO_BRL: float = 5.00  # Update periodically.
 
 
 def llm_options() -> dict[str, list[str]]:
-    """Return {provider: [model, ...]} derived from the pricing table."""
+    """Return {provider: [model, ...]} from LiteLLM's catalog.
+
+    Provider list is ours to maintain (API keys).
+    Model names are LiteLLM's responsibility — auto-updated when they release new ones.
+    """
+    import litellm
+
     result: dict[str, list[str]] = {}
-    for key in PRICING:
-        provider, model = key.split("/", 1)
+    seen: set[str] = set()
+
+    for key, info in litellm.model_cost.items():
+        if info.get("mode") != "chat":
+            continue
+
+        # Resolve provider + model name
+        if "/" in key:
+            provider, model = key.split("/", 1)
+            if "/" in model:  # skip nested paths like meta-llama/llama-x
+                continue
+        else:
+            provider = info.get("litellm_provider", "")
+            model = key
+
+        if provider not in SUPPORTED_PROVIDERS:
+            continue
+
+        # Skip specialized / non-text-chat models
+        lower = model.lower()
+        if any(ex in lower for ex in _EXCLUDE):
+            continue
+
+        dedup_key = f"{provider}/{model}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
         result.setdefault(provider, []).append(model)
-    return result
+
+    # Preserve provider order
+    return {p: sorted(result[p]) for p in SUPPORTED_PROVIDERS if p in result}
 
 
 def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Return cost in USD for a single LLM call. Returns 0.0 for unknown models."""
-    price = PRICING.get(model)
-    if not price:
+    """Return cost in USD for a call given token counts.
+
+    Delegates to litellm.cost_per_token — always uses their up-to-date table.
+    Returns 0.0 on any error (unknown model, missing pricing).
+    """
+    try:
+        import litellm
+        prompt_cost, completion_cost = litellm.cost_per_token(
+            model=model,
+            prompt_tokens=input_tokens,
+            completion_tokens=output_tokens,
+        )
+        return prompt_cost + completion_cost
+    except Exception:
         return 0.0
-    return (input_tokens / 1_000_000) * price["input"] + \
-           (output_tokens / 1_000_000) * price["output"]

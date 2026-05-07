@@ -70,15 +70,24 @@ def test_total_usd_since(tmp_db_path):
 
 
 def test_pricing_reflects_in_total(tmp_db_path):
-    tracker = _make(tmp_db_path)
-    # 1M in + 1M out on Gemini Flash = 0.075 + 0.30 = $0.375
-    tracker.log_call(
-        agent_name="ana",
-        provider="gemini",
-        model="gemini-2.0-flash",
-        input_tokens=1_000_000,
-        output_tokens=1_000_000,
-        context="reactive",
-    )
+    """Cost flows through from compute_cost into the DB and aggregation.
+
+    We mock litellm.cost_per_token so the test isn't coupled to live pricing.
+    """
+    from unittest.mock import patch
     import pytest
-    assert tracker.total_usd(agent_name="ana") == pytest.approx(0.375, rel=1e-6)
+
+    fake_input_cost = 0.075   # $0.075 per 1M input tokens
+    fake_output_cost = 0.300  # $0.300 per 1M output tokens
+
+    with patch("litellm.cost_per_token", return_value=(fake_input_cost, fake_output_cost)):
+        tracker = _make(tmp_db_path)
+        tracker.log_call(
+            agent_name="ana",
+            provider="gemini",
+            model="gemini-2.0-flash",
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            context="reactive",
+        )
+        assert tracker.total_usd(agent_name="ana") == pytest.approx(0.375, rel=1e-6)
