@@ -376,7 +376,9 @@ Effort: **~2 days** (substrate already in place).
 > | 6 | Framework / consumer split — `conexus` becomes a pip package; Ana + Pesquisador become consumers | Done (commit 5c5162e) |
 > | 7 | `SKILL_PACK` format + `TrifectaGuard` (deterministic taint check) + `ToolBackend` abstraction + MCP-stdio consume | **Done** (commit 80dba33 + 16f864f). See `src/conexus/core/skills/`, `src/conexus/core/trifecta/`, `src/conexus/core/backends/`. |
 > | 8 | `TEAM_PACK` + `BudgetCascader` + `HandoffRouter` + cross-agent TrifectaGuard | **Done** (commits d476101–6235bc8). See `src/conexus/core/team/`, `src/conexus/core/memory/handoff_audit.py`. |
-> | 9 | `MCPProducer` (bearer auth) — expose Conexus to Claude Code / Cursor | Future |
+> | 9 | `MCPProducer` (bearer auth) — expose Conexus to Claude Code / Cursor | **Done**. See `src/conexus/core/mcp/producer.py`. |
+> | 10 | Agent identity baseline — `IdentityRuntime`, `BlockStore`, `HistoryCompactor`, identity tools | **Done**. See `src/conexus/core/identity/`. |
+> | 11 | Connector Marketplace — `McpHttpBackend`, OAuth 2.1 / PKCE / DCR, AES-GCM vault, `ConnectorPack`, `ConnectorRegistry`, `/oauth/start` + `/oauth/callback`, Telegram magic-link, `conexus connectors` CLI | **Done**. See `src/conexus/core/oauth/`, `src/conexus/core/vault/`, `src/conexus/core/backends/mcp_http_backend.py`, `src/conexus/core/connectors/`, `src/conexus/web/oauth_router.py`, `src/conexus/adapters/telegram_auth.py`, `connectors/registry.json`. |
 >
 > This document governs Phases 0–5 only. The v2 spec governs Phases 6–9.
 

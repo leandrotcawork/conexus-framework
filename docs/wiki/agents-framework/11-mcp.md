@@ -240,6 +240,16 @@ One integration point still to own for a full production integration:
 
 - **Budget accounting** — `UsageTracker` counts LLM cost; per-server tool-call counters for `CapChecker` are deferred.
 
+### 9a-ii. Streamable HTTP consume — **shipped in Phase 11**
+
+`McpHttpBackend` (`src/conexus/core/backends/mcp_http_backend.py`) implements the MCP 2025-06-18 Streamable HTTP transport as a `ToolBackend`. Key behaviour:
+
+- `start()` performs the full MCP handshake: `initialize` (capturing `Mcp-Session-Id` header), then `notifications/initialized`, then a paginated `tools/list` walk to populate `_tool_names`.
+- Every `_call()` passes `Authorization: Bearer <token>` and `MCP-Protocol-Version: 2025-06-18`. On a `401` response it attempts an inline token refresh (via `OAuthClient.refresh`) before raising `NeedsAuthError`.
+- `execute()` calls `tools/call` and joins text-type content blocks into a single JSON string — same uniform `str` return as `McpStdioBackend`.
+- If the vault holds no token for the user+server pair, `_bearer()` raises `NeedsAuthError` immediately (no network call). `handle_agent_message` catches this and fires `cfg.on_auth_required` (`src/conexus/core/agent_handler.py:214`).
+- HTTP backends are **not** part of `SkillLoader.start_all/stop_all` — they are started per-request via the lazy `_client` pattern (`src/conexus/core/skills/skill_resolver.py:32`).
+
 Phase 9 update: `McpStdioBackend.start()` now calls `tools/list` after `initialize` and populates `self._tool_names` (`src/conexus/core/backends/mcp_stdio_backend.py:34`). The tool name list is available via `backend.list_tools()`. Schema population in `AgentHandlerConfig.tools_schema` is still the caller's responsibility — `tools/list` results populate `_tool_names` for routing but are not auto-converted to OpenAI function schemas.
 
 ### 9b. Expose Conexus via MCP (Conexus as server) — **shipped in Phase 9**

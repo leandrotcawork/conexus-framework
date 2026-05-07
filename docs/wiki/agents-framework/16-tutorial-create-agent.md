@@ -488,7 +488,78 @@ for `JobSpec` and `ConexusScheduler`.
 
 ---
 
-## 9. Checklist
+## 9. Attach a marketplace connector (Phase 11)
+
+Marketplace connectors expose remote MCP servers via OAuth 2.1. They wire into
+the agent as a `McpHttpBackend` — from the agent's perspective they look like
+any other SKILL_PACK.
+
+### Step 1 — browse and install
+
+```bash
+# list available connectors (reads connectors/registry.json)
+conexus connectors list
+
+# scaffold the connector pack under agents/<name>/skills/<connector>/
+conexus connectors install google_calendar --agent myagent
+```
+
+`install` writes two files into `agents/myagent/skills/google_calendar/`:
+
+- `SKILL_PACK.md` — frontmatter with `backend: mcp-http`, `capabilities: []`,
+  `data_classes: {}`.
+- `connector.json` — `server_url`, `scopes`, and UI metadata (used by
+  `ConnectorDescriptor`; see `src/conexus/core/connectors/pack.py`).
+
+### Step 2 — declare in SKILL.md
+
+```yaml
+skills:
+  - google_calendar@1.0
+```
+
+`SkillLoader` will pick up the `mcp-http` backend automatically at load time.
+It requires that `SkillLoader` is constructed with `vault` and `user_id`
+kwargs; omitting them raises `RuntimeError` at startup
+(`src/conexus/core/skills/skill_resolver.py:87`).
+
+### Step 3 — wire `on_auth_required` in the runner
+
+When the agent calls a tool and the vault holds no token, `McpHttpBackend`
+raises `NeedsAuthError`. `handle_agent_message` catches it and calls
+`cfg.on_auth_required` with a `NeedsAuthEvent`. Wire it to the Telegram magic-
+link factory:
+
+```python
+from conexus.adapters.telegram_auth import make_telegram_auth_callback
+
+cfg.on_auth_required = make_telegram_auth_callback(
+    chat_id=chat_id,
+    user_id=str(user_id),
+    bot=bot,
+    state_secret=state_secret_bytes,
+)
+cfg.user_id = str(user_id)
+```
+
+The callback sends an inline-keyboard button. Tapping it opens `/oauth/start`
+(FastAPI router in `src/conexus/web/oauth_router.py`), which runs DCR + PKCE
+and redirects to the AS. After the user grants access, `/oauth/callback`
+exchanges the code and stores the encrypted token in `TokenVault`. The next
+tool call succeeds transparently.
+
+### Step 4 — generate an OAuth start link for manual testing
+
+```bash
+CONEXUS_STATE_SECRET=<hex> CONEXUS_OAUTH_BASE=https://your.app \
+  conexus connectors connect google_calendar --user leandro
+```
+
+Prints a one-shot `/oauth/start?state=<jwt>` URL you can open in a browser.
+
+---
+
+## 10. Checklist
 
 - [ ] `agents/<name>/__init__.py` exists (empty)
 - [ ] `agents/<name>/SKILL.md` has all required frontmatter fields
