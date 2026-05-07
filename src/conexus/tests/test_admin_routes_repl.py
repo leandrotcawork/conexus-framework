@@ -41,3 +41,11 @@ def test_repl_post_returns_partial(tmp_path: Path) -> None:
         resp = client.post("/admin/agents/ana/test", data={"message": "hi"})
     assert resp.status_code == 200
     assert "hello back" in resp.text
+
+
+def test_repl_reset_clears_session(tmp_path: Path) -> None:
+    _seed(tmp_path)
+    app = make_admin_app(agents_dir=tmp_path, data_dir=tmp_path)
+    client = TestClient(app)
+    resp = client.post("/admin/agents/ana/test/reset")
+    assert resp.status_code in (200, 204)

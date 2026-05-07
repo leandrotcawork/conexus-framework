@@ -113,3 +113,17 @@ def test_delete_removes_folder(tmp_path: Path) -> None:
 def test_delete_404_when_missing(tmp_path: Path) -> None:
     client = TestClient(make_admin_app(agents_dir=tmp_path, data_dir=tmp_path))
     assert client.delete("/admin/agents/ghost").status_code == 404
+
+
+def test_preview_returns_yaml(tmp_path: Path) -> None:
+    from conexus.web.admin.services.template_lib import scaffold_agent
+    scaffold_agent(tmp_path, "ana", template="chat-only")
+    client = TestClient(make_admin_app(agents_dir=tmp_path, data_dir=tmp_path))
+    resp = client.post("/admin/agents/ana/preview", data={
+        "role": "preview only", "goal": "g",
+        "llm_provider": "openai", "llm_model": "gpt-4o-mini", "llm_temperature": "0.4",
+        "tools": "ping", "body": "x",
+    })
+    assert resp.status_code == 200
+    assert "preview only" in resp.text
+    assert "preview only" not in (tmp_path / "ana" / "SKILL.md").read_text()

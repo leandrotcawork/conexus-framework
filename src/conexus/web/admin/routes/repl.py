@@ -6,7 +6,9 @@ import secrets
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse
 
-from ..services.runner_proxy import run_one_message
+from fastapi.responses import Response
+
+from ..services.runner_proxy import reset_session, run_one_message
 
 
 def make_repl_router() -> APIRouter:
@@ -24,5 +26,12 @@ def make_repl_router() -> APIRouter:
         )
         resp.set_cookie("studio_sid", sid, httponly=True, samesite="lax")
         return resp
+
+    @router.post("/{name}/test/reset")
+    async def reset(request: Request, name: str) -> Response:
+        sid = request.cookies.get("studio_sid")
+        if sid:
+            reset_session(name, sid)
+        return Response(status_code=204)
 
     return router

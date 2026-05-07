@@ -108,6 +108,25 @@ def make_agents_router() -> APIRouter:
             status_code=422 if not res.ok else 200,
         )
 
+    # ── preview (no write) ────────────────────────────────────────────────────
+    @router.post("/agents/{name}/preview", response_class=HTMLResponse)
+    async def preview(
+        request: Request, name: str,
+        role: str = Form(""), goal: str = Form(""),
+        llm_provider: str = Form("openai"), llm_model: str = Form("gpt-4o-mini"),
+        llm_temperature: str = Form("0.4"), tools: str = Form(""), body: str = Form(""),
+    ) -> HTMLResponse:
+        fm = {
+            "name": name, "role": role, "goal": goal,
+            "llm": {"provider": llm_provider, "model": llm_model, "temperature": float(llm_temperature)},
+            "tools": [t.strip() for t in tools.split(",") if t.strip()],
+        }
+        yml = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
+        rendered = f"---\n{yml}---\n{body}"
+        return request.app.state.templates.TemplateResponse(
+            request, "partials/agent_yaml_preview.html", {"yaml": rendered}
+        )
+
     # ── delete ────────────────────────────────────────────────────────────────
     @router.delete("/agents/{name}")
     async def delete(request: Request, name: str) -> Response:

@@ -1,21 +1,40 @@
-<div class="bg-white border rounded p-3 flex flex-col">
-  <div class="flex items-center gap-2 mb-1">
-    <span class="text-2xl">{{ e.ui_icon }}</span>
-    <h3 class="font-semibold">{{ e.ui_label }}</h3>
+<div class="card p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+  <!-- Header -->
+  <div class="flex items-start gap-3">
+    <div class="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-xl shrink-0">
+      {{ e.ui_icon }}
+    </div>
+    <div class="flex-1 min-w-0">
+      <h3 class="font-semibold text-slate-900 text-sm leading-tight">{{ e.ui_label }}</h3>
+      <p class="text-xs text-slate-400 mt-0.5">{{ e.ui_category }} · v{{ e.version }}</p>
+    </div>
   </div>
-  <p class="text-xs text-slate-500 mb-1">{{ e.ui_category }} &middot; v{{ e.version }}</p>
-  <p class="text-sm flex-1">{{ e.ui_description }}</p>
-  <div class="text-xs text-slate-400 font-mono mt-2 break-all">{{ e.server_url }}</div>
-  {% if current_agent %}
-  <button class="mt-2 text-xs text-blue-600 hover:underline text-left"
-          hx-get="/admin/connectors/{{ e.name }}/diff?agent={{ current_agent }}"
-          hx-target="#diff-modal" hx-trigger="click">
-    Preview impact
-  </button>
-  {% endif %}
-  <form method="post" action="/admin/connectors/{{ e.name }}/install" class="mt-3">
-    <input type="hidden" name="agent" value="{{ current_agent }}">
-    <button class="px-3 py-1.5 bg-slate-900 text-white rounded text-sm w-full"
-            {% if not current_agent %}disabled{% endif %}>Install</button>
-  </form>
+
+  <!-- Description -->
+  <p class="text-sm text-slate-600 leading-relaxed flex-1">{{ e.ui_description }}</p>
+
+  <!-- Server URL -->
+  <p class="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100 truncate">{{ e.server_url }}</p>
+
+  <!-- Actions -->
+  <div class="flex items-center gap-2 pt-1">
+    {% if current_agent %}
+    <button class="text-xs text-indigo-600 hover:text-indigo-800 hover:underline transition-colors flex items-center gap-1"
+            hx-get="/admin/connectors/{{ e.name }}/diff?agent={{ current_agent }}"
+            hx-target="#diff-modal" hx-trigger="click">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      Preview impact
+    </button>
+    {% endif %}
+    <form method="post" action="/admin/connectors/{{ e.name }}/install" class="ml-auto">
+      <input type="hidden" name="agent" value="{{ current_agent }}">
+      <button type="submit"
+              class="{% if current_agent %}btn-primary{% else %}btn-ghost cursor-not-allowed opacity-50{% endif %} text-xs px-3 py-1.5"
+              {% if not current_agent %}disabled title="Select an agent first"{% endif %}>
+        Install
+      </button>
+    </form>
+  </div>
 </div>
