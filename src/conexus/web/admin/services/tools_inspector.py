@@ -77,10 +77,11 @@ def scan_tools_file(path: Path) -> list[ToolMethod]:
         if not _is_public_instance_method(stmt):
             continue
         assert isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
-        defaults_offset = len(stmt.args.args) - len(stmt.args.defaults)
+        params_args = stmt.args.args[1:]  # skip self
+        defaults_offset = len(params_args) - len(stmt.args.defaults)
         params = [
             ToolParam(name=a.arg, annotation=_ann(a.annotation), has_default=(i >= defaults_offset))
-            for i, a in enumerate(stmt.args.args[1:], start=1)
+            for i, a in enumerate(params_args)
         ]
         out.append(
             ToolMethod(
