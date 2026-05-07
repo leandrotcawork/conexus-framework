@@ -1,4 +1,8 @@
-"""Routes: /admin/packs (marketplace list) and /admin/agents/{name}/packs/{id}/(install|uninstall)."""
+"""Routes: /admin/packs (marketplace list) and /admin/agents/{name}/packs/{id}/(install|uninstall).
+
+Security assumption: localhost-only admin. No CSRF tokens. If exposed beyond localhost,
+add CSRF middleware before the install/uninstall POST handlers.
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request

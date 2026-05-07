@@ -25,7 +25,7 @@ def _write_skill_md(path: Path, fm: dict, body: str) -> None:
     yml = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
     tmp = path.with_suffix(".md.tmp")
     tmp.write_text(f"---\n{yml}---{body}", encoding="utf-8")
-    tmp.replace(path)  # atomic on POSIX + NTFS
+    tmp.replace(path)  # atomic w.r.t. concurrent reads; not crash-safe on Windows
 
 
 def _append_skill_ref(skill_md: Path, pack_id: str) -> None:

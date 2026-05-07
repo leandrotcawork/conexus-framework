@@ -1,6 +1,7 @@
 """Conexus Studio admin sub-app."""
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +45,7 @@ def make_admin_app(
             connectors_registry_path or agents_dir.parent / "connectors" / "registry.json"
         ),
         repo_root=_repo_root,
+        allow_unsigned=os.getenv("CONEXUS_ALLOW_UNSIGNED", "").lower() in ("1", "true"),
     )
 
     app = FastAPI(title="Conexus Studio", docs_url=None, redoc_url=None)

@@ -11,3 +11,4 @@ class AdminContext:
     data_dir: Path
     connectors_registry_path: Path
     repo_root: Path
+    allow_unsigned: bool = False
