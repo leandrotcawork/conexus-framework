@@ -3,10 +3,14 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 from conexus.core.skills.pack_loader import parse_skill_pack, SkillPackBackend
 from conexus.core.agent_registry import AgentRegistry
 from conexus.core.backends.python_backend import PythonBackend
 from conexus.core.backends.mcp_stdio_backend import McpStdioBackend
+
+if TYPE_CHECKING:
+    from conexus.core.backends.mcp_http_backend import McpHttpBackend
 
 
 class SkillLoader:
@@ -25,7 +29,7 @@ class SkillLoader:
         self._user_id = user_id
         self._oauth_client = oauth_client
         self._mcp_backends: list[McpStdioBackend] = []
-        self._http_backends: list = []  # lazy start — not in stdio lifecycle
+        self._http_backends: list[McpHttpBackend] = []  # lazy start — not in stdio lifecycle
 
     def load(self, skill_refs: list[str]) -> tuple[str, dict[str, str]]:
         """Load each skill. Returns (combined_prompt_fragment, merged_tool_tags).
