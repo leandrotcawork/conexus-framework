@@ -1,0 +1,5 @@
+{% if saved %}<p class="text-green-700 text-sm">Saved.</p>{% endif %}
+{% if errors %}<ul class="text-red-700 text-sm list-disc pl-5">
+  {% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+{% if warnings %}<ul class="text-amber-600 text-sm list-disc pl-5">
+  {% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}

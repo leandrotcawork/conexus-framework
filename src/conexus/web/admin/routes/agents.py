@@ -1,16 +1,23 @@
-"""Agent list + detail routes (read-only in Wave 1)."""
+"""Agent routes — list, new, detail, save, delete."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+import shutil
+
+import yaml
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..services.agent_repo import list_agents, read_agent
+from ..services.skill_writer import write_skill_md
+from ..services.template_lib import TEMPLATES, scaffold_agent
 from ..services.tools_inspector import scan_tools_file
+from ..services.validators import validate_agent
 
 
 def make_agents_router() -> APIRouter:
     router = APIRouter(prefix="/admin")
 
+    # ── list ──────────────────────────────────────────────────────────────────
     @router.get("/", response_class=HTMLResponse)
     async def list_view(request: Request) -> HTMLResponse:
         ctx = request.app.state.ctx
@@ -19,13 +26,28 @@ def make_agents_router() -> APIRouter:
             request, "agents/list.html", {"title": "Agents", "agents": agents}
         )
 
-    # CRITICAL: /agents/new must be registered before /agents/{name}
+    # CRITICAL: /agents/new registered before /agents/{name}
     @router.get("/agents/new", response_class=HTMLResponse)
     async def new_view(request: Request) -> HTMLResponse:
         return request.app.state.templates.TemplateResponse(
-            request, "agents/new.html", {"title": "New Agent"}
+            request, "agents/new.html",
+            {"title": "New agent", "templates": list(TEMPLATES)},
         )
 
+    @router.post("/agents/new")
+    async def new_create(
+        request: Request,
+        name: str = Form(...),
+        template: str = Form(...),
+    ) -> Response:
+        ctx = request.app.state.ctx
+        try:
+            scaffold_agent(ctx.agents_dir, name, template=template)
+        except (ValueError, FileExistsError) as exc:
+            return Response(str(exc), status_code=400)
+        return RedirectResponse(f"/admin/agents/{name}", status_code=303)
+
+    # ── detail (read-only) ────────────────────────────────────────────────────
     @router.get("/agents/{name}", response_class=HTMLResponse)
     async def detail_view(request: Request, name: str) -> HTMLResponse:
         ctx = request.app.state.ctx
@@ -47,5 +69,53 @@ def make_agents_router() -> APIRouter:
                 "raw_skill_md": agent.skill_path.read_text(encoding="utf-8"),
             },
         )
+
+    # ── save ──────────────────────────────────────────────────────────────────
+    @router.post("/agents/{name}", response_class=HTMLResponse)
+    async def save(
+        request: Request,
+        name: str,
+        role: str = Form(...),
+        goal: str = Form(...),
+        llm_provider: str = Form(...),
+        llm_model: str = Form(...),
+        llm_temperature: str = Form("0.4"),
+        tools: str = Form(""),
+        body: str = Form(""),
+    ) -> HTMLResponse:
+        ctx = request.app.state.ctx
+        skill_path = ctx.agents_dir / name / "SKILL.md"
+        if not skill_path.exists():
+            raise HTTPException(404, name)
+        raw = skill_path.read_text(encoding="utf-8")
+        existing = yaml.safe_load(raw.split("---", 2)[1]) or {}
+        existing.update({
+            "role": role,
+            "goal": goal,
+            "llm": {
+                **existing.get("llm", {}),
+                "provider": llm_provider,
+                "model": llm_model,
+                "temperature": float(llm_temperature),
+            },
+            "tools": [t.strip() for t in tools.split(",") if t.strip()],
+        })
+        write_skill_md(skill_path, existing, body)
+        res = validate_agent(ctx.agents_dir, name)
+        return request.app.state.templates.TemplateResponse(
+            request, "partials/validation_errors.html",
+            {"errors": res.errors, "warnings": res.warnings, "saved": res.ok, "agent_name": name},
+            status_code=422 if not res.ok else 200,
+        )
+
+    # ── delete ────────────────────────────────────────────────────────────────
+    @router.delete("/agents/{name}")
+    async def delete(request: Request, name: str) -> Response:
+        ctx = request.app.state.ctx
+        d = ctx.agents_dir / name
+        if not d.exists() or not d.is_dir():
+            raise HTTPException(404, name)
+        shutil.rmtree(d)
+        return Response(status_code=204)
 
     return router
