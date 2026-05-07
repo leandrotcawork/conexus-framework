@@ -61,7 +61,7 @@ def make_agents_router() -> APIRouter:
             agent_dir=ctx.agents_dir / name,
             skill_refs=fm.skills or [],
             identity_enabled=bool(fm.identity and fm.identity.enabled),
-            connector_registry=ctx.repo_root / "connectors" / "registry.json",
+            connector_registry=ctx.repo_root / "packs" / "registry.json",
             packs_root=ctx.repo_root / "packs",
             model=fm.llm.model if fm.llm else "gpt-4o-mini",
         )
