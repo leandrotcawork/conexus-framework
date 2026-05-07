@@ -32,8 +32,8 @@ def make_admin_app(
     connectors_registry_path: Path | None = None,
 ) -> FastAPI:
     ctx = AdminContext(
-        agents_dir=Path(agents_dir),
-        data_dir=Path(data_dir),
+        agents_dir=agents_dir,
+        data_dir=data_dir,
         connectors_registry_path=Path(
             connectors_registry_path or Path.cwd() / "connectors" / "registry.json"
         ),
@@ -46,7 +46,7 @@ def make_admin_app(
 
     @app.get("/admin/", response_class=HTMLResponse)
     async def root(request: Request) -> HTMLResponse:
-        return _TEMPLATES.TemplateResponse(
+        return request.app.state.templates.TemplateResponse(
             request, "base.html", {"title": "Conexus Studio", "body_partial": None}
         )
 
