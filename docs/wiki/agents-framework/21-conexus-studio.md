@@ -561,3 +561,129 @@ This is a known gap as of Phase C.
 > delegates to `PacksRegistry`, and `detail_view` already points at the unified
 > path. The connectors marketplace route (`make_connectors_router`) retains a
 > stale reference to `ConnectorRegistry` and has not been migrated yet.
+
+---
+
+## 11. Phase D — pack install / uninstall (studio-capability-rollout)
+
+Phase D wires live install and uninstall of skill packs from both the agent
+detail view and a dedicated marketplace page. Two new modules were added:
+`src/conexus/core/packs/installer.py` and
+`src/conexus/web/admin/routes/packs.py`.
+
+### 11.1 `installer.py` — pack service
+
+Public surface (`src/conexus/core/packs/installer.py`):
+
+```python
+class InstallError(RuntimeError): ...
+
+def install_pack(
+    pack_id: str,
+    *,
+    agent_dir: Path,
+    packs_root: Path,
+    registry_path: Path,
+    allow_unsigned: bool = False,
+) -> None: ...
+
+def uninstall_pack(pack_id: str, *, agent_dir: Path) -> None: ...
+```
+
+Key implementation details (all verified in `installer.py`):
+
+- **Path traversal guard** — `_safe_name(value, label)` rejects any `pack_id`
+  or `agent_name` containing `/`, `\`, or starting with `.`, or being empty
+  (`installer.py:47-49`).
+- **SHA pin** — `install_pack` calls `reg.get(pack_id)` then checks
+  `entry.sha == "unsigned"`; if true and `allow_unsigned=False`, raises
+  `InstallError` with an explicit message (`installer.py:67-70`).
+- **Atomic SKILL.md edit** — writes to `SKILL.md.tmp` then calls
+  `tmp.replace(path)` (atomic on POSIX; best-effort on Windows)
+  (`installer.py:27-28`).
+- **Rollback on failure** — both `install_pack` and `uninstall_pack` snapshot
+  the original `SKILL.md` text before editing; any exception during
+  `_append_skill_ref` / `_remove_skill_ref` restores the backup and re-raises
+  as `InstallError` (`installer.py:80-85`, `91-97`).
+- `uninstall_pack` does not consult the registry — it only reads and rewrites
+  `agent_dir/SKILL.md`, so it works even if the registry entry has been
+  removed.
+
+### 11.2 `routes/packs.py` — HTTP endpoints
+
+`make_packs_router()` registers three endpoints under the `/admin` prefix
+(`src/conexus/web/admin/routes/packs.py`):
+
+| Method | Path | Action |
+|--------|------|--------|
+| `GET` | `/admin/packs` | Marketplace view — lists all skill packs and connectors from `packs/registry.json` |
+| `POST` | `/admin/agents/{name}/packs/{pack_id}/install` | Calls `install_pack(...)`, redirects `303 → /admin/agents/{name}` |
+| `POST` | `/admin/agents/{name}/packs/{pack_id}/uninstall` | Calls `uninstall_pack(...)`, redirects `303 → /admin/agents/{name}` |
+
+Both mutating routes run `_safe_name` on `name` and `pack_id` before touching
+the filesystem, returning HTTP 400 on a validation failure (`packs.py:31-35`,
+`55-59`). An unknown agent directory returns HTTP 404.
+
+`install_pack` receives `allow_unsigned=getattr(ctx, "allow_unsigned", False)`,
+delegating the unsigned-pack policy to `AdminContext` (`packs.py:45`).
+
+Security note documented in `packs.py:3-5`: no CSRF tokens are used. The
+assumption is localhost-only access; if the admin is exposed beyond loopback,
+CSRF middleware must be added before these POST handlers.
+
+### 11.3 `skills.html` — marketplace template
+
+`src/conexus/web/admin/templates/skills.html` renders two sections
+(Skill Packs and Connectors) as a card grid. Each card shows `s.id`,
+`s.version`, and `s.ui.description`. It does not expose install buttons —
+installation is driven from the agent detail page.
+
+### 11.4 Agent form — install / remove UI
+
+`src/conexus/web/admin/templates/partials/agent_form.html` (Skill Packs
+section, lines 93–137) was updated in two ways:
+
+1. **Remove button** — each installed pack card now includes a `<form
+   method="post" action="/admin/agents/{name}/packs/{id}/uninstall">` with a
+   "Remove" submit button (`agent_form.html:100-102`).
+2. **"Add a pack" disclosure** — a `<details>` element lists uninstalled packs
+   from the `available_packs` template variable, filtered to exclude already-
+   installed IDs (`agent_form.html:119-136`). Each row has an Install button
+   posting to `/admin/agents/{name}/packs/{id}/install`.
+
+`available_packs` is injected by `detail_view` in `routes/agents.py:81-83`:
+
+```python
+"available_packs": PacksRegistry.load(
+    ctx.repo_root / "packs" / "registry.json"
+).list(kind="skill"),
+```
+
+### 11.5 `AdminContext` and factory changes
+
+`AdminContext` gains a fifth field (`src/conexus/web/admin/deps.py:14`):
+
+```python
+allow_unsigned: bool = False
+```
+
+`make_admin_app` reads the env var `CONEXUS_ALLOW_UNSIGNED` and sets
+`allow_unsigned=True` when its value is `"1"` or `"true"` (case-insensitive)
+(`app.py:48`). `make_packs_router` is now registered by the factory
+(`app.py:59`).
+
+### 11.6 Phase D scope and known gaps
+
+- The marketplace (`/admin/packs`) is read-only; install is only available from
+  the agent detail page.
+- No CSRF protection — loopback trust is the only protection (inherited from
+  Wave 0).
+- `tmp.replace(path)` is described as "not crash-safe on Windows" in the source
+  comment (`installer.py:28`); it is atomic on POSIX.
+
+> Verdict: Phase D is verified in source — `installer.py` (atomic edit,
+> rollback, SHA pin, path traversal guard), `routes/packs.py` (three endpoints,
+> `_safe_name` validation, `allow_unsigned` delegation), `skills.html`
+> (marketplace template), updated `agent_form.html` (Remove + Install UI), and
+> `AdminContext.allow_unsigned` / `CONEXUS_ALLOW_UNSIGNED` env wiring are all
+> present and wired through `make_admin_app`.
