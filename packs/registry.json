@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "notes",
+      "kind": "skill",
+      "version": "0.1.0",
+      "source": "packs/notes",
+      "sha": "55708f404fca1603b375bae78703d2f2102723b5",
+      "ui": {
+        "label": "Notes",
+        "icon": "puzzle",
+        "category": "Skills",
+        "description": "You can save short notes for the user (free-text, no structure) and search them by\nsubstring. Use this when the user says \"remember\", \"save \u2026"
+      }
+    },
+    {
+      "id": "reminders",
+      "kind": "skill",
+      "version": "0.1.0",
+      "source": "packs/reminders",
+      "sha": "21be999562150c5866b57c61988b273cf4c283a4",
+      "ui": {
+        "label": "Reminders",
+        "icon": "puzzle",
+        "category": "Skills",
+        "description": "You can set, list and cancel reminders for the user. Cron syntax is standard 5-field\n(`m h dom mon dow`). Use `set_reminder` when the user e\u2026"
+      }
+    },
+    {
+      "id": "google_calendar",
+      "kind": "connector",
+      "version": "1.0",
+      "source": "https://github.com/conexus/connectors/google_calendar",
+      "sha": "unsigned",
+      "server_url": "https://mcp.google.com/calendar",
+      "scopes": [
+        "https://www.googleapis.com/auth/calendar"
+      ],
+      "ui": {
+        "label": "Google Calendar",
+        "icon": "calendar",
+        "category": "Productivity",
+        "description": "Read and manage events on the user's Google Calendar."
+      }
+    }
+  ]
+}
