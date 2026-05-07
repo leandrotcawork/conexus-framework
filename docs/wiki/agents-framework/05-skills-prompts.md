@@ -14,7 +14,23 @@ This document is the canonical reference for that pipeline. It covers the Skills
 
 A **Skill** is a directory. The only required file is `SKILL.md`, which must open with YAML frontmatter containing at minimum `name` and `description`. Optional fields include `allowed-tools`, `license`, and domain-specific keys (Conexus adds `llm`, `tools`, `schedules`, `budget`).
 
-**Phase 7 addition:** `SKILL.md` now also accepts a `skills:` list of sub-skill references (see `src/conexus/core/config/skill_loader.py:46`). Each entry names a `SKILL_PACK` directory under `agents/<name>/skills/<pack-name>/SKILL_PACK.md`. The `SkillLoader` (see `src/conexus/core/skills/skill_resolver.py`) resolves these at startup, registers the appropriate backend (`PythonBackend` or `McpStdioBackend`), merges `data_classes` tags for `TrifectaGuard`, and injects any prompt fragments from the pack body into the agent's system prompt.
+**Phase 7 addition:** `SKILL.md` now also accepts a `skills:` list of sub-skill references (see `src/conexus/core/config/skill_loader.py:46`). Each entry names a `SKILL_PACK` directory. The `SkillLoader` (see `src/conexus/core/skills/skill_resolver.py`) resolves these at startup, registers the appropriate backend (`PythonBackend` or `McpStdioBackend`), merges `data_classes` tags for `TrifectaGuard`, and injects any prompt fragments from the pack body into the agent's system prompt.
+
+**Phase B addition — shared `packs/` root and `pack_ctx` DI** (`src/conexus/core/skills/skill_resolver.py:23`). `SkillLoader` now accepts two additional constructor arguments:
+
+- `packs_root: Path | None` — a shared packs directory (e.g. `packs/` at repo root). `_resolve_pack` tries per-agent first (`agents/<name>/skills/<pack>/SKILL_PACK.md`), then falls through to `packs_root/<pack>/SKILL_PACK.md` (`src/conexus/core/skills/skill_resolver.py:38`).
+- `pack_ctx: dict | None` — dependency-injection dict forwarded to the pack's `create_tools(ctx)` factory. Mandatory keys for built-in packs: `store` (a `SqliteStore` instance) and `agent_name` (str). The loader calls `create_tools(ctx)` when present; falls back to zero-arg constructor scan for packs that have not adopted the factory pattern (`src/conexus/core/skills/skill_resolver.py:72`).
+
+**Reference packs (Phase B)** — two packs ship under `packs/` and are now listed in `agents/anna/SKILL.md`:
+
+| Pack | Dir | Table | Tools |
+|------|-----|-------|-------|
+| `reminders` | `packs/reminders/` | `pack_reminders_jobs` | `set_reminder`, `list_reminders`, `cancel_reminder` |
+| `notes` | `packs/notes/` | `pack_notes_entries` | `add_note`, `list_notes`, `search_notes` |
+
+Both packs use `backend: python` and expose a `create_tools(ctx)` factory in `tools.py`. Schema migrations live under `packs/<name>/migrations/001_init.sql` and are applied via `SqliteStore.apply_pack_migrations(pack_id, sql_dir)` (`src/conexus/core/memory/sqlite_store.py:367`), which tracks applied versions in the `pack_migrations` table.
+
+`rehydrate_reminders(sched, store, dispatch=...)` in `src/conexus/core/scheduler/scheduler.py:100` reads every `active=1` row from `pack_reminders_jobs` on boot and registers one `JobSpec(kind="reminder")` per row. `"reminder"` is present in `CATCHUP_WINDOWS` with `catchable=False` (fire-and-forget, no replay on restart) (`src/conexus/core/scheduler/scheduler.py:44`).
 
 **Phase 10 addition — `identity:` block in SKILL.md** (`src/conexus/core/config/skill_loader.py:65`). Opt-in field `identity: IdentitySection | None = None` on `SkillFrontmatter`. When present and `enabled: true`, `build_runtime` constructs an `IdentityRuntime` and `handle_agent_message` prepends an identity context section to the system prompt automatically. Full schema:
 
@@ -55,17 +71,29 @@ identity:
 All three fields default to `None` — backward compatible with every existing agent.
 
 ```
-agents/ana/
-├── SKILL.md           # required — persona + frontmatter; may list `skills: [wiki@1.0]`
+agents/anna/
+├── SKILL.md           # required — persona + frontmatter; may list `skills: [reminders, notes]`
 ├── tools.py           # Python tool implementations (not loaded by LLM)
 ├── jobs.py            # scheduled job builders
-├── skills/            # optional: installed SKILL_PACKs
+├── skills/            # optional: per-agent SKILL_PACKs (checked before packs/)
 │   └── wiki/
 │       ├── SKILL_PACK.md   # pack descriptor (name, version, backend, data_classes, ...)
 │       ├── tools.py        # pack-specific tools (python backend only)
 │       └── mcp.json        # MCP server config (mcp-stdio backend only)
 └── references/        # optional: markdown, templates, scripts loaded on demand
     └── wiki-style.md
+
+packs/                 # shared packs root (packs_root arg to SkillLoader)
+├── reminders/
+│   ├── SKILL_PACK.md
+│   ├── tools.py            # ReminderTools + create_tools(ctx) factory
+│   └── migrations/
+│       └── 001_init.sql    # pack_reminders_jobs table
+└── notes/
+    ├── SKILL_PACK.md
+    ├── tools.py            # NoteTools + create_tools(ctx) factory
+    └── migrations/
+        └── 001_init.sql    # pack_notes_entries table
 ```
 
 **`SKILL_PACK.md` frontmatter shape** (`src/conexus/core/skills/pack_loader.py:16`):

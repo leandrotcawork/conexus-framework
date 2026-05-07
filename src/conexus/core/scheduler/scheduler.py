@@ -103,7 +103,11 @@ def rehydrate_reminders(
     *,
     dispatch,
 ) -> None:
-    """Read active reminders from sqlite and register one job per row."""
+    """Read active reminders from sqlite and register one job per row.
+
+    Call this at bot startup after ConexusScheduler is built and before sched.start().
+    dispatch: async callable (message: str) -> None — typically the agent's send_text fn.
+    """
     with store.connect() as conn:
         rows = conn.execute(
             "SELECT id, agent_name, cron, message FROM pack_reminders_jobs WHERE active=1"
