@@ -1,4 +1,4 @@
-<div x-data="{ tab: 'identity' }">
+<div x-data='{ tab: "identity", llmProvider: {{ (fm.llm.provider if fm.llm else "openai") | tojson }}, llmModel: {{ (fm.llm.model if fm.llm else "gpt-4o-mini") | tojson }}, llmOptions: {{ llm_options | tojson }} }'>
   <!-- Tab navigation -->
   <nav class="flex gap-0.5 border-b border-slate-200 mb-4 -mx-5 px-5 overflow-x-auto">
     {% for t in ["identity","llm","tools","skills","persistence","budget","prompt"] %}
@@ -29,11 +29,21 @@
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Provider</label>
-        <input name="llm_provider" value="{{ fm.llm.provider if fm.llm else 'openai' }}" class="input">
+        <select name="llm_provider" x-model="llmProvider"
+                @change="llmModel = (llmOptions[llmProvider] || [])[0] || ''"
+                class="input">
+          <template x-for="p in Object.keys(llmOptions)" :key="p">
+            <option :value="p" x-text="p" :selected="p === llmProvider"></option>
+          </template>
+        </select>
       </div>
       <div>
         <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Model</label>
-        <input name="llm_model" value="{{ fm.llm.model if fm.llm else 'gpt-4o-mini' }}" class="input font-mono text-sm">
+        <select name="llm_model" x-model="llmModel" class="input font-mono text-sm">
+          <template x-for="m in (llmOptions[llmProvider] || [])" :key="m">
+            <option :value="m" x-text="m" :selected="m === llmModel"></option>
+          </template>
+        </select>
       </div>
     </div>
     <div>

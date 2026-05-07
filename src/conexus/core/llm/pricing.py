@@ -27,6 +27,15 @@ PRICING: dict[str, dict[str, float]] = {
 USD_TO_BRL: float = 5.00  # Update periodically.
 
 
+def llm_options() -> dict[str, list[str]]:
+    """Return {provider: [model, ...]} derived from the pricing table."""
+    result: dict[str, list[str]] = {}
+    for key in PRICING:
+        provider, model = key.split("/", 1)
+        result.setdefault(provider, []).append(model)
+    return result
+
+
 def compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Return cost in USD for a single LLM call. Returns 0.0 for unknown models."""
     price = PRICING.get(model)
