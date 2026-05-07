@@ -38,22 +38,24 @@ def make_admin_app(
     agents_dir: Path,
     data_dir: Path,
     connectors_registry_path: Path | None = None,
+    repo_root: Path | None = None,
 ) -> FastAPI:
 ```
 
-Behaviour (verified in `app.py:33-53`):
+Behaviour (verified in `app.py:31-58`):
 
 - Constructs an `AdminContext` dataclass and attaches it to `app.state.ctx`.
 - Creates a `FastAPI` instance with `docs_url=None, redoc_url=None` (Swagger
   UI disabled).
 - Mounts `StaticFiles` at `/admin/static` pointing to
   `src/conexus/web/admin/static/`.
-- Registers a single route `GET /admin/` that renders `base.html`.
+- Registers four routers: `make_agents_router()`, `make_connectors_router()`,
+  `make_connections_router()`, `make_repl_router()`.
 - Registers the `fmt_epoch` Jinja2 global (see §4).
 
 The `connectors_registry_path` parameter defaults to
-`Path.cwd() / "connectors" / "registry.json"` when `None` is passed
-(`app.py:37-39`).
+`agents_dir.parent / "connectors" / "registry.json"` when `None` is passed
+(`app.py:42-44`). `repo_root` defaults to `agents_dir.parent` (`app.py:38`).
 
 ---
 
@@ -67,7 +69,13 @@ class AdminContext:
     agents_dir: Path
     data_dir: Path
     connectors_registry_path: Path
+    repo_root: Path
 ```
+
+`repo_root` was added in Phase A (studio-capability-rollout). It is used by
+`detail_view` to locate `connectors/registry.json` and the shared `packs/`
+directory relative to the repository root, independent of where `agents_dir`
+lives (see `routes/agents.py:64-65`).
 
 Routes retrieve it from `request.app.state.ctx`. No FastAPI `Depends()`
 wiring exists in Wave 0 — the pattern is in place for Wave 1 routes to adopt.
@@ -251,14 +259,17 @@ All routers use `APIRouter` with prefix; they are included into the app via
 |--------|------|----------|-------|
 | `GET` | `/admin/` | `agents/list.html` | `list_agents(ctx.agents_dir)` |
 | `GET` | `/admin/agents/new` | `agents/new.html` | stub, no form processing |
-| `GET` | `/admin/agents/{name}` | `agents/edit.html` | `read_agent` + `scan_tools_file`; `readonly=True` |
+| `GET` | `/admin/agents/{name}` | `agents/edit.html` | `read_agent` + `build_capability_view`; `readonly=True` |
 
 Route ordering is intentional: `/admin/agents/new` is registered before
 `/admin/agents/{name}` to prevent the path parameter from capturing the literal
-string `"new"` (see `routes/agents.py:22`).
+string `"new"` (see `routes/agents.py:29`).
 
-The detail route passes `raw_skill_md` (file read from `agent.skill_path`) to
-the template for the sidebar.
+The detail route calls `build_capability_view(...)` (Phase A) and passes the
+resulting `capability` dict to the template. `capability` has four keys:
+`native`, `identity`, `packs`, `connectors` (see §9 for details). The flat
+`methods` list used in earlier drafts is gone — the template iterates the
+individual layers instead.
 
 (see `src/conexus/web/admin/routes/agents.py`)
 
@@ -297,7 +308,7 @@ All templates live under `src/conexus/web/admin/templates/`.
 | `agents/list.html` | Table: name / role / model / tools count / identity enabled |
 | `agents/edit.html` | 3-column grid: back link · 7-tab Alpine form · SKILL.md sidebar |
 | `agents/new.html` | Placeholder — Wave 2 |
-| `partials/agent_form.html` | 7 Alpine tabs: identity / llm / tools / skills / persistence / budget / prompt (x-data / x-show / x-cloak) |
+| `partials/agent_form.html` | 7 Alpine tabs: identity / llm / tools / skills / persistence / budget / prompt; Tools tab renders the 4-layer `capability` dict (Phase A) |
 | `connectors/marketplace.html` | Grid of connector cards |
 | `partials/connector_card.html` | Icon, label, category, description, disabled Install button |
 | `partials/repl_message.html` | Single REPL turn: role + text with colored left border |
@@ -314,3 +325,126 @@ All templates live under `src/conexus/web/admin/templates/`.
 > Verdict: Wave 1 is verified in source — three service modules, three route
 > factories, eight templates, and REPL cookie plumbing are all present and
 > wired through `make_admin_app`.
+
+---
+
+## 9. Phase A — 4-layer capability view (studio-capability-rollout)
+
+Phase A ships the Tools tab as a structured capability browser instead of a
+flat method list. All new code lives under
+`src/conexus/web/admin/services/`.
+
+### 9.1 New services
+
+#### `capability_view.py`
+
+```python
+def build_capability_view(
+    *,
+    agent_dir: Path,
+    skill_refs: list[str],
+    identity_enabled: bool,
+    connector_registry: Path,
+    packs_root: Path,
+    model: str,
+) -> dict:
+```
+
+Aggregates all four layers and returns a single dict with keys `native`,
+`identity`, `packs`, `connectors`. Called by `detail_view` in
+`routes/agents.py:60-67`. The `model` field is forwarded to `token_counter`
+(not yet surfaced in the template but available for future use).
+
+(see `src/conexus/web/admin/services/capability_view.py`)
+
+#### `pack_inspector.py`
+
+```python
+def scan_installed_packs(
+    agent_dir: Path, *, packs_root: Path, skill_refs: list[str]
+) -> list[InstalledPack]:
+```
+
+For each `skill_refs` entry resolves the pack under `agent_dir/skills/<name>/`
+or `packs_root/<name>/`, parses `SKILL_PACK.md` via `parse_skill_pack`, and
+AST-scans `tools.py` via the existing `scan_tools_file`. Returns a list of
+`InstalledPack(frozen=True)` dataclasses with fields: `id`, `version`,
+`backend`, `source_path`, `body`, `methods`.
+
+(see `src/conexus/web/admin/services/pack_inspector.py`)
+
+#### `connector_inspector.py`
+
+```python
+def list_connectors_for_agent(
+    skill_refs: list[str], registry_path: Path
+) -> list[ConnectorEntry]:
+```
+
+Reads `registry.json`, filters to connectors whose `name` appears in
+`skill_refs` (prefix before `@`), and returns `ConnectorEntry(frozen=True)`
+dataclasses with fields: `id`, `version`, `label`, `icon`, `category`,
+`description`, `server_url`, `scopes`. Returns `[]` if the registry file does
+not exist.
+
+(see `src/conexus/web/admin/services/connector_inspector.py`)
+
+#### `identity_inspector.py`
+
+```python
+def list_identity_tools(*, enabled: bool) -> list[ToolMethod]:
+```
+
+Returns `[]` if `identity.enabled` is false. Otherwise calls
+`inspect.getsourcefile(IdentityTools)` to locate the source and reuses
+`scan_tools_file` — no second import, no eval.
+
+(see `src/conexus/web/admin/services/identity_inspector.py`)
+
+#### `token_counter.py`
+
+```python
+def count_schema_tokens(schemas: list[dict], *, model: str) -> int:
+```
+
+Delegates to `litellm.token_counter` with the JSON-serialised schema list.
+Returns `0` on any error, making the function safe to call without a live
+LiteLLM installation.
+
+(see `src/conexus/web/admin/services/token_counter.py`)
+
+### 9.2 Tools tab rendering
+
+`partials/agent_form.html` (Tools tab, lines 56–132) renders four `<section>`
+blocks from `capability.*`:
+
+| Section | Data key | Empty state text |
+|---------|----------|-----------------|
+| Native | `capability.native` | "No native tools." |
+| Identity | `capability.identity` | "Identity disabled." |
+| Skill Packs | `capability.packs` | "No skill packs installed." |
+| Connectors | `capability.connectors` | "No connectors enabled." |
+
+Each entry in `native` and `identity` is a `ToolMethod`; each entry in `packs`
+is an `InstalledPack` (exposes `p.id`, `p.version`, `p.backend`, `p.methods`);
+each entry in `connectors` is a `ConnectorEntry` (exposes `c.id`, `c.version`,
+`c.category`, `c.description`).
+
+### 9.3 `AdminContext` and factory changes
+
+`AdminContext` gains a fourth field `repo_root: Path`
+(`src/conexus/web/admin/deps.py:13`). `make_admin_app` accepts an optional
+`repo_root` parameter that defaults to `agents_dir.parent` (`app.py:38`).
+
+The `detail_view` route derives registry and packs paths from `ctx.repo_root`:
+
+```python
+connector_registry=ctx.repo_root / "connectors" / "registry.json",
+packs_root=ctx.repo_root / "packs",
+```
+
+(see `src/conexus/web/admin/routes/agents.py:64-65`)
+
+> Verdict: Phase A is verified in source — five new service modules, updated
+> `AdminContext`, updated factory signature, and a four-section Tools tab
+> template are all wired end-to-end.

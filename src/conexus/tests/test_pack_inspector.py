@@ -44,3 +44,13 @@ def test_scan_skips_unresolved_refs(tmp_path: Path):
         agent_dir, packs_root=tmp_path / "packs", skill_refs=["does-not-exist"]
     )
     assert result == []
+
+
+def test_scan_rejects_path_traversal_refs(tmp_path: Path):
+    agent_dir = tmp_path / "agents" / "ana"
+    agent_dir.mkdir(parents=True)
+    for malicious in ["../evil", "../../etc/passwd", ".hidden", "a\\b"]:
+        result = scan_installed_packs(
+            agent_dir, packs_root=tmp_path / "packs", skill_refs=[malicious]
+        )
+        assert result == [], f"traversal ref {malicious!r} should be skipped"

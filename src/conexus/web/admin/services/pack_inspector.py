@@ -32,6 +32,8 @@ def scan_installed_packs(
     out: list[InstalledPack] = []
     for ref in skill_refs:
         name = ref.split("@")[0]
+        if "/" in name or "\\" in name or name.startswith("."):
+            continue
         path = _resolve(name, agent_dir, packs_root)
         if path is None:
             continue
