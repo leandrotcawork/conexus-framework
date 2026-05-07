@@ -2,7 +2,7 @@
   <!-- Tab navigation -->
   <nav class="flex gap-0.5 border-b border-slate-200 mb-4 -mx-5 px-5 overflow-x-auto">
     {% for t in ["identity","llm","tools","skills","persistence","budget","prompt"] %}
-    <button @click="tab='{{ t }}'"
+    <button type="button" @click="tab='{{ t }}'"
             :class="tab==='{{ t }}' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700 border-b-2 border-transparent'"
             class="tab-nav-btn whitespace-nowrap px-3 capitalize">{{ t }}</button>
     {% endfor %}
@@ -142,16 +142,13 @@
               class="input font-mono text-xs resize-y">{{ body }}</textarea>
   </div>
 
-  <!-- Save bar (visible on identity / llm / tools / prompt tabs that have editable fields) -->
+  <!-- Save bar -->
   <div class="mt-5 pt-4 border-t border-slate-100 flex items-center gap-3">
-    <button type="submit" form="agent-form" class="btn-primary">Save changes</button>
+    <button type="button"
+            hx-post="/admin/agents/{{ agent.name }}"
+            hx-target="#save-feedback"
+            hx-swap="innerHTML"
+            class="btn-primary">Save changes</button>
     <div id="save-feedback" class="flex-1"></div>
   </div>
-</div>
-
-<!-- Validation errors target (HTMX saves update this) -->
-<div id="validation-result"
-     hx-post="/admin/agents/{{ agent.name }}"
-     hx-target="#validation-result"
-     hx-swap="outerHTML">
 </div>
