@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <h2 class="text-xl font-semibold mb-4">Connections</h2>
+  {% if rows %}
+  <table class="w-full bg-white border rounded text-sm">
+    <thead class="bg-slate-100"><tr>
+      <th class="text-left p-2">Server</th><th class="text-left p-2">User</th>
+      <th class="text-left p-2">Expires</th><th class="text-left p-2">Status</th>
+      <th class="text-left p-2">Scopes</th><th></th></tr></thead>
+    <tbody>{% for r in rows %}{% include "partials/connection_row.html" %}{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="text-slate-500">No connections yet. Visit the marketplace.</p>{% endif %}
+</div>
+{% endblock %}

@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from .deps import AdminContext
 from .routes.agents import make_agents_router
+from .routes.connections import make_connections_router
 from .routes.connectors import make_connectors_router
 from .routes.repl import make_repl_router
 
@@ -48,6 +49,7 @@ def make_admin_app(
 
     app.include_router(make_agents_router())
     app.include_router(make_connectors_router())
+    app.include_router(make_connections_router())
     app.include_router(make_repl_router())
 
     return app

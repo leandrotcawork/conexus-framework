@@ -1,0 +1,17 @@
+<!-- `fmt_epoch(int) -> str` Jinja global registered in app.py. -->
+<tr class="border-t">
+  <td class="p-2 font-mono text-xs">{{ r.server_url }}</td>
+  <td class="p-2">{{ r.user_id }}</td>
+  <td class="p-2 text-xs">{{ fmt_epoch(r.expires_at) if r.expires_at else "—" }}</td>
+  <td class="p-2">
+    {% if r.status == "ok" %}<span class="inline-block w-2 h-2 rounded-full bg-green-500"></span> ok
+    {% elif r.status == "expiring" %}<span class="inline-block w-2 h-2 rounded-full bg-amber-500"></span> expiring
+    {% else %}<span class="inline-block w-2 h-2 rounded-full bg-red-500"></span> expired{% endif %}
+  </td>
+  <td class="p-2 text-xs">{{ r.scopes | join(" ") }}</td>
+  <td class="p-2">
+    <form method="post" action="/admin/connections/{{ r.server_url }}/reauth" class="inline">
+      <button class="text-blue-700 text-xs hover:underline">Reauth</button>
+    </form>
+  </td>
+</tr>
