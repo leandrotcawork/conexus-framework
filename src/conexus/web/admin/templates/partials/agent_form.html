@@ -95,9 +95,11 @@
       <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Skill Packs ({{ capability.packs | length }})</h3>
       {% for p in capability.packs %}
       <div class="mb-3 border border-slate-200 rounded-lg overflow-hidden">
-        <div class="px-3 py-2 bg-slate-50 flex justify-between text-xs">
+        <div class="px-3 py-2 bg-slate-50 flex justify-between items-center text-xs">
           <span><span class="font-mono text-indigo-700">{{ p.id }}</span> <span class="text-slate-400">v{{ p.version }} · {{ p.backend }}</span></span>
-          <span class="text-slate-500">{{ p.methods | length }} tools</span>
+          <form method="post" action="/admin/agents/{{ agent.name }}/packs/{{ p.id }}/uninstall">
+            <button type="submit" class="text-xs text-rose-600 hover:underline">Remove</button>
+          </form>
         </div>
         {% if p.methods %}
         <ul class="divide-y divide-slate-100">
@@ -111,8 +113,27 @@
         {% endif %}
       </div>
       {% else %}
-      <p class="text-sm text-slate-400">No skill packs installed.</p>
+      <p class="text-sm text-slate-400">No skill packs installed. <a href="/admin/packs" class="text-indigo-600 hover:underline">Browse marketplace</a></p>
       {% endfor %}
+
+      <!-- Available to install -->
+      {% set installed_ids = capability.packs | map(attribute='id') | list %}
+      {% set available = available_packs | rejectattr('id', 'in', installed_ids) | list %}
+      {% if available %}
+      <details class="mt-2">
+        <summary class="text-xs text-slate-500 cursor-pointer">Add a pack ({{ available | length }} available)</summary>
+        <div class="mt-2 space-y-2">
+          {% for s in available %}
+          <div class="flex justify-between items-center px-3 py-2 border border-slate-200 rounded-lg text-xs">
+            <span><span class="font-mono text-indigo-700">{{ s.id }}</span> <span class="text-slate-400">v{{ s.version }}</span><br><span class="text-slate-500">{{ s.ui.description }}</span></span>
+            <form method="post" action="/admin/agents/{{ agent.name }}/packs/{{ s.id }}/install">
+              <button type="submit" class="text-xs text-indigo-600 hover:underline">Install</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
     </section>
 
     <!-- Connectors -->

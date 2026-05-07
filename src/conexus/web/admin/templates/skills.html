@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-5xl mx-auto p-6 space-y-6">
+  <h1 class="text-2xl font-semibold">Skills marketplace</h1>
+
+  <section>
+    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-3">Skill Packs ({{ skills | length }})</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {% for s in skills %}
+      <div class="border border-slate-200 rounded-lg p-3 bg-white">
+        <div class="flex items-center justify-between">
+          <span class="font-mono text-sm text-indigo-700">{{ s.id }}</span>
+          <span class="text-xs text-slate-400">v{{ s.version }}</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">{{ s.ui.description }}</p>
+      </div>
+      {% else %}
+      <p class="text-sm text-slate-400">No skill packs.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500 mb-3">Connectors ({{ connectors | length }})</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {% for c in connectors %}
+      <div class="border border-slate-200 rounded-lg p-3 bg-white">
+        <div class="flex items-center justify-between">
+          <span class="font-mono text-sm text-indigo-700">{{ c.id }}</span>
+          <span class="text-xs text-slate-400">v{{ c.version }}</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">{{ c.ui.description }}</p>
+      </div>
+      {% else %}
+      <p class="text-sm text-slate-400">No connectors.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

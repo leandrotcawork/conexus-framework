@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from conexus.core.llm.pricing import llm_options
+from conexus.core.packs.registry import PacksRegistry
 from ..services.agent_repo import list_agents, read_agent
 from ..services.skill_writer import write_skill_md
 from ..services.template_lib import TEMPLATES, scaffold_agent
@@ -77,6 +78,9 @@ def make_agents_router() -> APIRouter:
                 "readonly": True,
                 "raw_skill_md": agent.skill_path.read_text(encoding="utf-8"),
                 "llm_options": llm_options(),
+                "available_packs": PacksRegistry.load(
+                    ctx.repo_root / "packs" / "registry.json"
+                ).list(kind="skill"),
             },
         )
 
