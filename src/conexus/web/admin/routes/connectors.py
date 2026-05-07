@@ -39,7 +39,7 @@ def make_connectors_router() -> APIRouter:
         return RedirectResponse(f"/admin/agents/{agent}", status_code=303)
 
     @router.get("/{connector}/diff", response_class=HTMLResponse)
-    async def diff(request: Request, connector: str, agent: str = Query("")) -> HTMLResponse:
+    async def diff(request: Request, connector: str, agent: str = Query("")) -> Response:
         ctx = request.app.state.ctx
         registry = ConnectorRegistry.from_file(ctx.connectors_registry_path)
         entry = registry.get(connector)
