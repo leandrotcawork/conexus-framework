@@ -1,0 +1,10 @@
+<div class="bg-white border rounded p-3 flex flex-col">
+  <div class="flex items-center gap-2 mb-1">
+    <span class="text-2xl">{{ e.ui_icon }}</span>
+    <h3 class="font-semibold">{{ e.ui_label }}</h3>
+  </div>
+  <p class="text-xs text-slate-500 mb-1">{{ e.ui_category }} &middot; v{{ e.version }}</p>
+  <p class="text-sm flex-1">{{ e.ui_description }}</p>
+  <div class="text-xs text-slate-400 font-mono mt-2 break-all">{{ e.server_url }}</div>
+  <button class="mt-3 px-3 py-1.5 bg-slate-900 text-white rounded text-sm" disabled>Install (Wave 2)</button>
+</div>

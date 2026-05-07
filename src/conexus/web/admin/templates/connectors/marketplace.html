@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-6xl mx-auto">
+  <h2 class="text-xl font-semibold mb-4">Connector marketplace</h2>
+  {% if entries %}
+  <div class="grid grid-cols-3 gap-4">
+    {% for e in entries %}{% include "partials/connector_card.html" %}{% endfor %}
+  </div>
+  {% else %}<p class="text-slate-500">No connectors registered.</p>{% endif %}
+</div>
+{% endblock %}
