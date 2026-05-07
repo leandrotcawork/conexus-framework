@@ -38,6 +38,8 @@ def build_runtime(
     max_turns: int = 6,
     progress_map: dict[str, str] | None = None,
     result_max_chars: int | None = None,
+    user_id: str | None = None,
+    on_auth_required: Any | None = None,
 ) -> AgentRuntime:
     """Parse skill file, build LLM, return AgentRuntime ready to hand to a bot."""
     skill = parse_skill_file(skill_path)
@@ -84,6 +86,8 @@ def build_runtime(
         fallback_msg=fallback_msg,
         identity=identity,
         history_cfg=history_cfg,
+        user_id=user_id,
+        on_auth_required=on_auth_required,
         **({"progress_map": progress_map} if progress_map else {}),
         **({"result_max_chars": result_max_chars} if result_max_chars else {}),
     )
