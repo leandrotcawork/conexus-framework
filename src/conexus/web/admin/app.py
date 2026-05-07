@@ -42,7 +42,7 @@ def make_admin_app(
         agents_dir=agents_dir,
         data_dir=data_dir,
         connectors_registry_path=Path(
-            connectors_registry_path or agents_dir.parent / "connectors" / "registry.json"
+            connectors_registry_path or _repo_root / "packs" / "registry.json"
         ),
         repo_root=_repo_root,
         allow_unsigned=os.getenv("CONEXUS_ALLOW_UNSIGNED", "").lower() in ("1", "true"),

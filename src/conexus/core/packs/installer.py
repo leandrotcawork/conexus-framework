@@ -64,6 +64,8 @@ def install_pack(
     except Exception as e:
         raise InstallError(str(e)) from e
 
+    # SHA pin v1: only rejects explicitly "unsigned". Non-empty SHA values are
+    # human-attested at registry build time; cryptographic verification is out of scope.
     if entry.sha == "unsigned" and not allow_unsigned:
         raise InstallError(
             f"pack '{pack_id}' is unsigned (sha='unsigned'); pass allow_unsigned=True to override"
