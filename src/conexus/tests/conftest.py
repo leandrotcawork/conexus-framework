@@ -1,6 +1,22 @@
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
+
+@pytest.fixture
+def studio_client(tmp_path: Path) -> TestClient:
+    from conexus.web.admin.app import make_admin_app
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    ana_dir = agents_dir / "ana"
+    ana_dir.mkdir()
+    (ana_dir / "SKILL.md").write_text(
+        "---\nname: ana\nrole: r\ngoal: g\ntools: []\nllm:\n  provider: openai\n  model: gpt-4o-mini\n---\n"
+    )
+    (ana_dir / "tools.py").write_text("class T:\n    def ping(self) -> str: ...\n")
+    app = make_admin_app(agents_dir=agents_dir, data_dir=tmp_path / "data", repo_root=tmp_path)
+    return TestClient(app)
 
 
 @pytest.fixture

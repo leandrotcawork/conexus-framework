@@ -11,7 +11,6 @@ from conexus.core.llm.pricing import llm_options
 from ..services.agent_repo import list_agents, read_agent
 from ..services.skill_writer import write_skill_md
 from ..services.template_lib import TEMPLATES, scaffold_agent
-from ..services.tools_inspector import scan_tools_file
 from ..services.validators import validate_agent
 
 
@@ -56,16 +55,25 @@ def make_agents_router() -> APIRouter:
             agent = read_agent(ctx.agents_dir, name)
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
-        methods = scan_tools_file(agent.tools_path) if agent.tools_path.exists() else []
+        from conexus.web.admin.services.capability_view import build_capability_view
+        fm = agent.skill.frontmatter
+        capability = build_capability_view(
+            agent_dir=ctx.agents_dir / name,
+            skill_refs=fm.skills or [],
+            identity_enabled=bool(fm.identity and fm.identity.enabled),
+            connector_registry=ctx.repo_root / "connectors" / "registry.json",
+            packs_root=ctx.repo_root / "packs",
+            model=fm.llm.model if fm.llm else "gpt-4o-mini",
+        )
         return request.app.state.templates.TemplateResponse(
             request,
             "agents/edit.html",
             {
                 "title": agent.name,
                 "agent": agent,
-                "fm": agent.skill.frontmatter,
+                "fm": fm,
                 "body": agent.skill.body,
-                "methods": methods,
+                "capability": capability,
                 "readonly": True,
                 "raw_skill_md": agent.skill_path.read_text(encoding="utf-8"),
                 "llm_options": llm_options(),

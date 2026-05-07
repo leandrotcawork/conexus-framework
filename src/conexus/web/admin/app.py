@@ -33,13 +33,16 @@ def make_admin_app(
     agents_dir: Path,
     data_dir: Path,
     connectors_registry_path: Path | None = None,
+    repo_root: Path | None = None,
 ) -> FastAPI:
+    _repo_root = repo_root or agents_dir.parent
     ctx = AdminContext(
         agents_dir=agents_dir,
         data_dir=data_dir,
         connectors_registry_path=Path(
-            connectors_registry_path or Path.cwd() / "connectors" / "registry.json"
+            connectors_registry_path or agents_dir.parent / "connectors" / "registry.json"
         ),
+        repo_root=_repo_root,
     )
 
     app = FastAPI(title="Conexus Studio", docs_url=None, redoc_url=None)
