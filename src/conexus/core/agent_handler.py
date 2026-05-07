@@ -11,7 +11,7 @@ import inspect
 import json
 import sqlite3
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -20,8 +20,17 @@ from conexus.core.budget.cap_checker import BudgetCap, CapChecker
 from conexus.core.llm.context_tag import set_context
 from conexus.core.llm.router import TrackedLLM
 from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.oauth.errors import NeedsAuthError
 
 _BRT = ZoneInfo("America/Sao_Paulo")
+
+
+@dataclass
+class NeedsAuthEvent:
+    server_url: str
+    scopes: list[str]
+    resource: str
+    user_id: str | None
 
 
 @dataclass
@@ -44,6 +53,8 @@ class AgentHandlerConfig:
     identity: object | None = None       # IdentityRuntime | None — typed as object to avoid import cycle
     history_cfg: object | None = None    # HistorySection | None
     summarize_fn: object | None = None   # Callable[[str|None, list[dict]], str] | None
+    user_id: str | None = None
+    on_auth_required: Callable[[NeedsAuthEvent], Awaitable[None]] | None = None
 
 
 async def handle_agent_message(
@@ -194,11 +205,20 @@ async def handle_agent_message(
                         _sent_progress.add(fn_name)
                         await progress(cfg.progress_map[fn_name])
 
-                    result = (
-                        await cfg.execute_tool(fn_name, fn_args)
-                        if _is_async_tool
-                        else cfg.execute_tool(fn_name, fn_args)
-                    )
+                    try:
+                        result = (
+                            await cfg.execute_tool(fn_name, fn_args)
+                            if _is_async_tool
+                            else cfg.execute_tool(fn_name, fn_args)
+                        )
+                    except NeedsAuthError as nae:
+                        if cfg.on_auth_required:
+                            await cfg.on_auth_required(NeedsAuthEvent(
+                                server_url=nae.server_url, scopes=nae.scopes,
+                                resource=nae.resource, user_id=cfg.user_id))
+                        pending = "Preciso de permissão para acessar essa ferramenta. Verifique a mensagem de conexão."
+                        store.chat_append(cfg.name, "assistant", pending)
+                        return pending
 
                     if cfg.result_max_chars and len(result) > cfg.result_max_chars:
                         result = result[: cfg.result_max_chars] + "\n[... truncado]"
@@ -414,11 +434,18 @@ async def handle_team_message(
                                     tool=fn_name, args=fn_args, result=blocked, outcome="trifecta_blocked",
                                 )
                                 continue
-                        result = (
-                            await frame.execute_tool(fn_name, fn_args)
-                            if frame.is_async_tool
-                            else frame.execute_tool(fn_name, fn_args)
-                        )
+                        try:
+                            result = (
+                                await frame.execute_tool(fn_name, fn_args)
+                                if frame.is_async_tool
+                                else frame.execute_tool(fn_name, fn_args)
+                            )
+                        except NeedsAuthError as nae:
+                            if frame.cfg.on_auth_required:
+                                await frame.cfg.on_auth_required(NeedsAuthEvent(
+                                    server_url=nae.server_url, scopes=nae.scopes,
+                                    resource=nae.resource, user_id=frame.cfg.user_id))
+                            return "Preciso de permissão para acessar essa ferramenta. Verifique a mensagem de conexão."
                         frame.messages.append({"role": "tool", "tool_call_id": tc_id, "content": result})
                         record_tool_call(
                             audit_conn, session_id=session_id, agent=frame.name,

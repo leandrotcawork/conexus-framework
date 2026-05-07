@@ -192,3 +192,38 @@ async def test_tool_result_truncation(tmp_db_path):
     tool_msg = [m for m in second_call_kwargs["messages"] if m.get("role") == "tool"][0]
     assert tool_msg["content"].endswith("[... truncado]")
     assert len(tool_msg["content"]) <= 10 + len("\n[... truncado]")
+
+
+@pytest.mark.asyncio
+async def test_needs_auth_short_circuits(tmp_db_path):
+    from conexus.core.oauth.errors import NeedsAuthError
+    from conexus.core.agent_handler import NeedsAuthEvent
+
+    events: list[NeedsAuthEvent] = []
+
+    async def on_auth(ev: NeedsAuthEvent) -> None:
+        events.append(ev)
+
+    async def execute_tool(name: str, args: dict) -> str:
+        raise NeedsAuthError("https://mcp.example/", ["calendar.read"])
+
+    tc = _mock_tool_call("call1", "list_events", {})
+    cfg = _make_config(
+        tmp_db_path,
+        llm_responses=[_mock_resp(tool_calls=[tc])],
+        execute_tool=execute_tool,
+    )
+    cfg.tools_schema = [{"type": "function", "function": {"name": "list_events", "parameters": {}}}]
+    cfg.on_auth_required = on_auth
+    cfg.user_id = "user123"
+
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
+    cap_checker = CapChecker(MagicMock())
+
+    reply = await handle_agent_message(cfg, store, cap_checker, "list my events")
+
+    assert "permissão" in reply
+    assert len(events) == 1
+    assert events[0].server_url == "https://mcp.example/"
+    assert events[0].user_id == "user123"
