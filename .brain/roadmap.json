@@ -2,10 +2,10 @@
   "project": "Conexus",
   "current_phase_id": null,
   "summary": {
-    "total_phases": 7,
-    "completed_phases": 6,
-    "total_tasks": 58,
-    "completed_tasks": 57
+    "total_phases": 8,
+    "completed_phases": 7,
+    "total_tasks": 66,
+    "completed_tasks": 65
   },
   "phases": [
     {
@@ -84,6 +84,29 @@
         {"id": "T-047", "title": "Telegram magic-link UX (make_telegram_auth_callback)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
         {"id": "T-048", "title": "E2E integration test (fake AS + fake MCP)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"},
         {"id": "T-049", "title": "Google Calendar connector pack (validation slice)", "status": "done", "completed_at": "2026-05-07T00:00:00-03:00"}
+      ]
+    },
+    {
+      "id": "phase-studio",
+      "name": "Studio V1 — Conexus Web UI",
+      "status": "completed",
+      "started_at": "2026-05-08T00:00:00-03:00",
+      "completed_at": "2026-05-08T23:00:00-03:00",
+      "plan": "docs/superpowers/plans/2026-05-08-conexus-studio-v1.md",
+      "tasks": [
+        {"id": "T-050", "title": "AdminContext + app factory + Jinja2Templates", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-051", "title": "Agents list + new + edit routes", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-052", "title": "REPL route + session management", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-053", "title": "Connectors marketplace route", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-054", "title": "Validator route + ToolValidator integration", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-055", "title": "connections_repo service + connections status page", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-056", "title": "tool_diff service + diff modal endpoint", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-057", "title": "Live YAML preview pane (HTMX)", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-058", "title": "Cmd+K palette (cmdk.js Alpine component)", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-059", "title": "REPL reset endpoint", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-060", "title": "Full UI redesign (Inter/Fira Code + indigo design system)", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-061", "title": "`conexus studio` CLI subcommand", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"},
+        {"id": "T-062", "title": "Squash merge Studio V1 → master (47 tests green)", "status": "done", "completed_at": "2026-05-08T00:00:00-03:00"}
       ]
     }
   ]

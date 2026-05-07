@@ -1,10 +1,11 @@
 # System Pulse — Conexus
-> Auto-updated: 2026-05-07
+> Auto-updated: 2026-05-08
 
 ## Current Phase
-**Phase 11 — Connector Marketplace: COMPLETE (all 13 tasks).** OAuth 2.1 + PKCE + DCR + AES-GCM vault + McpHttpBackend + ConnectorPack + FastAPI router + CLI + Telegram magic-link + E2E test + wiki sync. Phase 10 (T-045 Ana migration) deferred per user.
+**Studio V1 COMPLETE.** Waves 3-4 shipped: connections_repo + tool_diff services, connections page + reauth stub, diff modal, live YAML preview, REPL reset, Cmd+K palette, restart banner, full UI redesign (Inter/Fira Code + indigo system, 14 templates). Squash-merged → master, 47 tests green. T-045 (Ana identity migration) only remaining planned task.
 
 ## Recent Changes
+- 2026-05-08: Studio V1 complete (Waves 3-4 + UI redesign, squash-merged). New: web/admin/services/connections_repo.py + tool_diff.py, routes/connections.py, static/cmdk.js. Rewritten: app.css + base.html + 12 templates (Inter/Fira Code, indigo-600, flat light design). Modified: routes/connectors.py (diff endpoint), routes/agents.py (YAML preview), routes/repl.py (reset). 47 tests green.
 - 2026-05-07: Phase 11 Connector Marketplace complete (26 commits, 892aa5b..154151f). New: oauth/, vault/, connectors/, web/, adapters/telegram_auth.py, connectors/registry.json, _marketplace_demo connector pack. SqliteStore: oauth_pkce_state, oauth_tokens, oauth_clients tables. AgentHandlerConfig: user_id + on_auth_required. ADR-002: PKCE verifier server-side. Wiki partitions 03/11/14/16/20 updated.
 - 2026-05-03: Identity baseline 9/10 (commits b499d2f..10caf36). New modules: core/identity/, core/history/, cli/identity_runtime.py. SqliteStore: facts now (agent_id, key, value); new tables identity_blocks + chat_summaries. AgentRuntime+AgentHandlerConfig wired for identity/compactor. Opt-in via `identity:` block in SKILL.md. Opus review APPROVED. E2E test green.
 - 2026-05-01: Phase 9 complete (~12 commits). Stack-based team loop in agent_handler.py; delegate_tool.py + transcript.py; replay.py + tool_audit.py; mcp/producer.py (FastMCP); McpStdioBackend hardened (Lock + id correlation); CLI: mcp-server + replay subcommands. 87 new tests passing.
@@ -28,7 +29,8 @@ src/conexus/core/ = framework kernel (agent_handler, agent_registry, llm, memory
   + oauth/ (pkce, state, metadata, client, errors), vault/ (crypto, token_vault)                ← Phase 11
   + connectors/ (pack, registry), web/ (oauth_router, app), adapters/telegram_auth.py           ← Phase 11
   + backends/mcp_http_backend.py                                                                 ← Phase 11
-src/conexus/cli/ = CLI entry point + build_runtime + tag suggest + run-team + mcp-server + replay + identity_runtime + connectors
+  + web/admin/ (app, routes/*, services/connections_repo+tool_diff, static/*, templates/*)      ← Studio V1
+src/conexus/cli/ = CLI entry point + build_runtime + tag suggest + run-team + mcp-server + replay + identity_runtime + connectors + studio
 adapters/ = consumer wiring (Telegram, SSH, wiki clone)
 agents/teams/product_team/TEAM_PACK.md = reference 3-member pack (ana + pm + researcher)
 SQLite @ /data/conexus.db (now includes handoff_audit table), wiki @ /data/wiki/
@@ -91,6 +93,10 @@ conexus pip wheel = src/conexus/ only (framework deps subset)
 - Telegram auth: `src/conexus/adapters/telegram_auth.py`
 - Connector registry: `connectors/registry.json`
 - Demo pack: `agents/teams/_marketplace_demo/skills/google_calendar/`
+- Studio app factory: `src/conexus/web/admin/app.py`
+- Studio routes: `src/conexus/web/admin/routes/` (agents, connectors, connections, repl, validators)
+- Studio services: `src/conexus/web/admin/services/` (connections_repo.py, tool_diff.py)
+- Studio UI: `src/conexus/web/admin/static/app.css`, `static/cmdk.js`, `templates/`
 
 ## Active Decisions
 - ADR-001: wiki-keeper scope locked to `docs/wiki/agents-framework/`
