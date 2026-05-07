@@ -97,9 +97,11 @@
       <div class="mb-3 border border-slate-200 rounded-lg overflow-hidden">
         <div class="px-3 py-2 bg-slate-50 flex justify-between items-center text-xs">
           <span><span class="font-mono text-indigo-700">{{ p.id }}</span> <span class="text-slate-400">v{{ p.version }} · {{ p.backend }}</span></span>
-          <form method="post" action="/admin/agents/{{ agent.name }}/packs/{{ p.id }}/uninstall">
-            <button type="submit" class="text-xs text-rose-600 hover:underline">Remove</button>
-          </form>
+          <button type="button"
+                  hx-post="/admin/agents/{{ agent.name }}/packs/{{ p.id }}/uninstall"
+                  hx-swap="none"
+                  hx-on::after-request="window.location.reload()"
+                  class="text-xs text-rose-600 hover:underline">Remove</button>
         </div>
         {% if p.methods %}
         <ul class="divide-y divide-slate-100">
@@ -126,9 +128,11 @@
           {% for s in available %}
           <div class="flex justify-between items-center px-3 py-2 border border-slate-200 rounded-lg text-xs">
             <span><span class="font-mono text-indigo-700">{{ s.id }}</span> <span class="text-slate-400">v{{ s.version }}</span><br><span class="text-slate-500">{{ s.ui.description }}</span></span>
-            <form method="post" action="/admin/agents/{{ agent.name }}/packs/{{ s.id }}/install">
-              <button type="submit" class="text-xs text-indigo-600 hover:underline">Install</button>
-            </form>
+            <button type="button"
+                    hx-post="/admin/agents/{{ agent.name }}/packs/{{ s.id }}/install"
+                    hx-swap="none"
+                    hx-on::after-request="window.location.reload()"
+                    class="text-xs text-indigo-600 hover:underline">Install</button>
           </div>
           {% endfor %}
         </div>
