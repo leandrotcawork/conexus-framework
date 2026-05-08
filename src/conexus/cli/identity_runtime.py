@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from conexus.core.config.skill_loader import IdentitySection
+from conexus.core.config.skill_loader import IdentitySection, WikiSection
 from conexus.core.identity.blocks import BlockStore
 from conexus.core.identity.tools import IdentityTools
 from conexus.core.memory.sqlite_store import SqliteStore
@@ -23,16 +23,11 @@ class IdentityRuntime:
         self.agent_id = agent_id
         self.cfg = cfg
         self.store = store
+        self.skill_dir = skill_dir
         self.blocks = BlockStore(store)
         self.wiki: WikiStore | None = None
         if cfg.wiki:
-            wiki_path = (
-                skill_dir / cfg.wiki.dir
-                if not Path(cfg.wiki.dir).is_absolute()
-                else Path(cfg.wiki.dir)
-            )
-            wiki_path.mkdir(parents=True, exist_ok=True)
-            self.wiki = WikiStore(str(wiki_path))
+            self.wiki = _build_wiki(cfg.wiki, skill_dir)
         block_specs = {name: spec.budget_chars for name, spec in cfg.blocks.items()}
         # Seed initial block content if not yet present
         for name, spec in cfg.blocks.items():
@@ -45,6 +40,21 @@ class IdentityRuntime:
             blocks=self.blocks,
             block_specs=block_specs,
         )
+
+
+def _build_wiki(wiki_cfg: WikiSection, skill_dir: Path) -> WikiStore:
+    if wiki_cfg.backend == "local":
+        wiki_path = (
+            skill_dir / wiki_cfg.dir
+            if not Path(wiki_cfg.dir).is_absolute()
+            else Path(wiki_cfg.dir)
+        )
+        return WikiStore.local(wiki_path)
+    if wiki_cfg.backend == "github_app":
+        raise NotImplementedError(
+            "github_app backend lands in Phase 2 — use 'local' for now"
+        )
+    raise ValueError(f"unknown wiki backend: {wiki_cfg.backend!r}")
 
 
 def build_identity_runtime(
