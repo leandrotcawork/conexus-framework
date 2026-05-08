@@ -11,7 +11,6 @@ from conexus.core.agent_handler import AgentHandlerConfig
 from conexus.core.budget.cap_checker import BudgetCap
 from conexus.core.config.skill_loader import parse_skill_file
 from conexus.core.llm.service import LLMConfig, build_llm
-from conexus.core.llm.usage_tracker import UsageTracker
 from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.tools.schema_gen import generate_tool_schemas
 
@@ -28,7 +27,6 @@ def build_runtime(
     *,
     tools_obj: Any,
     execute_tool: Callable[[str, dict], Awaitable[str]],
-    tracker: UsageTracker,
     agent_name: str,
     system_prompt: str,
     store: SqliteStore | None = None,

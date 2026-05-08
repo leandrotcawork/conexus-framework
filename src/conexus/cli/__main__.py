@@ -73,7 +73,6 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
         str(skill_path),
         tools_obj=tools,
         execute_tool=execute_tool,
-        tracker=tracker,
         agent_name=agent_name,
         system_prompt=skill.body,
         store=store,

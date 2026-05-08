@@ -89,7 +89,6 @@ def _build_session(agent_name: str, agents_dir: Path, data_dir: Path) -> _Sessio
         str(skill_path),
         tools_obj=tools,
         execute_tool=execute_tool,
-        tracker=tracker,
         agent_name=agent_name,
         system_prompt=system_prompt,
         store=store,
