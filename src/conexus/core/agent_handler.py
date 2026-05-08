@@ -119,6 +119,7 @@ async def handle_agent_message(
             ir.store,
             ir.wiki,
             ir.blocks,
+            ir.skill_dir,
         )
 
     base_system = (identity_ctx + "\n\n" if identity_ctx else "") + cfg.system_prompt

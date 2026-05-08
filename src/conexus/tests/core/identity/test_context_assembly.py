@@ -87,3 +87,40 @@ def test_omits_wiki_index_when_disabled(setup, tmp_path):
     )
     ctx = assemble_identity_context("ana", cfg, store, wiki, blocks)
     assert "about.md" not in ctx
+
+
+def test_context_prepends_default_prompt(tmp_path):
+    from conexus.core.config.skill_loader import IdentitySection
+    from conexus.core.identity.blocks import BlockStore
+    from conexus.core.identity.context import assemble_identity_context
+    from conexus.core.identity.prompt import DEFAULT_MEMORY_PROMPT_PT_BR
+    from conexus.core.memory.sqlite_store import SqliteStore
+
+    store = SqliteStore(str(tmp_path / "db.sqlite"))
+    cfg = IdentitySection(enabled=True)
+    out = assemble_identity_context("a", cfg, store, None, BlockStore(store), tmp_path)
+    assert out.startswith(DEFAULT_MEMORY_PROMPT_PT_BR)
+
+
+def test_context_uses_prompt_override(tmp_path):
+    from conexus.core.config.skill_loader import IdentitySection
+    from conexus.core.identity.blocks import BlockStore
+    from conexus.core.identity.context import assemble_identity_context
+    from conexus.core.memory.sqlite_store import SqliteStore
+
+    (tmp_path / "custom.md").write_text("CUSTOM-PROMPT", encoding="utf-8")
+    store = SqliteStore(str(tmp_path / "db.sqlite"))
+    cfg = IdentitySection(enabled=True, prompt_override="./custom.md")
+    out = assemble_identity_context("a", cfg, store, None, BlockStore(store), tmp_path)
+    assert out.startswith("CUSTOM-PROMPT")
+
+
+def test_context_disabled_returns_empty(tmp_path):
+    from conexus.core.config.skill_loader import IdentitySection
+    from conexus.core.identity.blocks import BlockStore
+    from conexus.core.identity.context import assemble_identity_context
+    from conexus.core.memory.sqlite_store import SqliteStore
+
+    store = SqliteStore(str(tmp_path / "db.sqlite"))
+    out = assemble_identity_context("a", IdentitySection(enabled=False), store, None, BlockStore(store), tmp_path)
+    assert out == ""
