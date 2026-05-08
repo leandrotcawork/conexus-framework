@@ -7,7 +7,7 @@ import yaml
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from conexus.core.llm.pricing import llm_options
+from conexus.core.llm.catalog import llm_options
 from conexus.core.packs.installer import InstallError, _safe_name
 from conexus.core.packs.registry import PacksRegistry
 from ..services.agent_repo import list_agents, read_agent
