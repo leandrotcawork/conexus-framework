@@ -1,17 +1,29 @@
-"""Model catalog — live /v1/models for capable providers, bundled catalog else.
+"""Model catalog — live /v1/models where possible, bundled litellm catalog else.
 
-Backed entirely by litellm primitives; no per-provider hand-rolled fetchers.
-Caller maintenance is `pip install -U litellm` plus env-keys.
+Priority per provider:
+  1. litellm.get_valid_models(check_provider_endpoint=True) — openai/anthropic/gemini.
+  2. Direct GET /models probe — deepseek/groq (litellm doesn't probe these live).
+  3. litellm bundled model_cost catalog (refreshes on `pip install -U litellm`).
+
+Caller maintenance: keep litellm up-to-date + supply API key env vars.
 """
 from __future__ import annotations
 
+import json
 import os
+import urllib.request
 from functools import lru_cache
 
 SUPPORTED_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "gemini", "deepseek", "groq")
 
-# Providers where litellm.get_valid_models(check_provider_endpoint=True) probes /v1/models live.
+# Providers where litellm probes /v1/models live.
 _LIVE_CAPABLE: frozenset[str] = frozenset({"openai", "anthropic", "gemini"})
+
+# Providers litellm can't probe — we call their /models directly.
+_DIRECT_LIVE: dict[str, tuple[str, str]] = {
+    "deepseek": ("DEEPSEEK_API_KEY", "https://api.deepseek.com/models"),
+    "groq":     ("GROQ_API_KEY",     "https://api.groq.com/openai/v1/models"),
+}
 
 _ENV_KEY: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
@@ -36,7 +48,7 @@ def list_providers() -> list[str]:
 
 @lru_cache(maxsize=8)
 def list_models(provider: str) -> list[str]:
-    """Call .cache_clear() when provider catalog or key changes."""
+    """Live probe → direct probe → catalog. Call .cache_clear() on key change."""
     import litellm
     if provider in _LIVE_CAPABLE:
         try:
@@ -48,6 +60,10 @@ def list_models(provider: str) -> list[str]:
                 return sorted(_filter_chat(live))
         except Exception:
             pass
+    if provider in _DIRECT_LIVE:
+        live = _direct_live_models(provider)
+        if live:
+            return sorted(_filter_chat(live))
     return sorted(_filter_chat(_catalog_models(provider)))
 
 
@@ -62,6 +78,21 @@ def get_info(model: str) -> dict:
 def llm_options() -> dict[str, list[str]]:
     """Compat shim — same shape as old pricing.llm_options()."""
     return {p: list_models(p) for p in list_providers()}
+
+
+def _direct_live_models(provider: str) -> list[str]:
+    """GET /models from provider API. Returns [] on any failure."""
+    env_key, url = _DIRECT_LIVE[provider]
+    key = os.environ.get(env_key)
+    if not key:
+        return []
+    try:
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read())
+        return [m["id"] for m in data.get("data", [])]
+    except Exception:
+        return []
 
 
 def _catalog_models(provider: str) -> list[str]:

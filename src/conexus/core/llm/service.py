@@ -62,6 +62,12 @@ class LLMService:
             model="primary", messages=messages, metadata=meta, **kw,
         )
 
+    async def acall(self, messages: list[dict], **kw) -> tuple[Any, str]:
+        """Compat shim: returns (resp, full_model) matching old TrackedLLM.acall()."""
+        resp = await self.acompletion(messages, **kw)
+        full_model = f"{self.config.provider}/{self.config.model}"
+        return resp, full_model
+
     async def acomplete_text(self, messages: list[dict], **kw) -> str:
         resp = await self.acompletion(messages, **kw)
         return resp.choices[0].message.content
