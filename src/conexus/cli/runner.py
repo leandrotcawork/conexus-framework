@@ -11,7 +11,6 @@ from conexus.core.agent_handler import AgentHandlerConfig
 from conexus.core.budget.cap_checker import BudgetCap
 from conexus.core.config.skill_loader import parse_skill_file
 from conexus.core.llm.service import LLMConfig, build_llm
-from conexus.core.llm import telemetry
 from conexus.core.llm.usage_tracker import UsageTracker
 from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.tools.schema_gen import generate_tool_schemas
