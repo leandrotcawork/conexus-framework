@@ -2,9 +2,10 @@
 > Auto-updated: 2026-05-08
 
 ## Current Phase
-**Studio V1 COMPLETE.** Waves 3-4 shipped: connections_repo + tool_diff services, connections page + reauth stub, diff modal, live YAML preview, REPL reset, Cmd+K palette, restart banner, full UI redesign (Inter/Fira Code + indigo system, 14 templates). Squash-merged → master, 47 tests green. T-045 (Ana identity migration) only remaining planned task.
+**Memory + Wiki Phase 1 COMPLETE** (12 commits, 64 tests green). WikiBackend Protocol + LocalBackend + WikiStore facade (git dropped). Memory-routing pt-BR prompt auto-prepended to identity context. `wiki.backend`/`prompt_override` in SKILL.md schema. notes-pack descriptions tightened. T-045 (Ana identity migration) + Phase 2 (GitHubAppBackend) still pending.
 
 ## Recent Changes
+- 2026-05-08: Memory+Wiki Phase 1 shipped (12 commits ea62282..a0e5e77). New: `core/memory/wiki/` package (WikiBackend Protocol, LocalBackend, safe_join). WikiStore refactored to facade (191→60 lines, no git). Identity prompt auto-prepend (DEFAULT_MEMORY_PROMPT_PT_BR). SKILL.md: wiki.backend + prompt_override. identity_runtime: _build_wiki dispatch + skill_dir attr. notes-pack descriptions disambiguated. 64 tests green. Phase review: SHIP (Opus).
 - 2026-05-08: Studio V1 complete (Waves 3-4 + UI redesign, squash-merged). New: web/admin/services/connections_repo.py + tool_diff.py, routes/connections.py, static/cmdk.js. Rewritten: app.css + base.html + 12 templates (Inter/Fira Code, indigo-600, flat light design). Modified: routes/connectors.py (diff endpoint), routes/agents.py (YAML preview), routes/repl.py (reset). 47 tests green.
 - 2026-05-07: Phase 11 Connector Marketplace complete (26 commits, 892aa5b..154151f). New: oauth/, vault/, connectors/, web/, adapters/telegram_auth.py, connectors/registry.json, _marketplace_demo connector pack. SqliteStore: oauth_pkce_state, oauth_tokens, oauth_clients tables. AgentHandlerConfig: user_id + on_auth_required. ADR-002: PKCE verifier server-side. Wiki partitions 03/11/14/16/20 updated.
 - 2026-05-03: Identity baseline 9/10 (commits b499d2f..10caf36). New modules: core/identity/, core/history/, cli/identity_runtime.py. SqliteStore: facts now (agent_id, key, value); new tables identity_blocks + chat_summaries. AgentRuntime+AgentHandlerConfig wired for identity/compactor. Opt-in via `identity:` block in SKILL.md. Opus review APPROVED. E2E test green.
@@ -83,7 +84,8 @@ conexus pip wheel = src/conexus/ only (framework deps subset)
 - Dev workflow: `docs/dev-workflow/`
 - Phase 9 plan: `docs/superpowers/plans/2026-04-30-phase-9-runtime-replay-mcp.md`
 - Identity baseline plan: `docs/superpowers/plans/2026-05-02-agent-identity-baseline.md`
-- Identity modules: `src/conexus/core/identity/{blocks,tools,context}.py`, `src/conexus/core/history/{summarizer,compactor}.py`, `src/conexus/cli/identity_runtime.py`
+- Identity modules: `src/conexus/core/identity/{blocks,tools,context,prompt}.py`, `src/conexus/core/history/{summarizer,compactor}.py`, `src/conexus/cli/identity_runtime.py`
+- Wiki backend: `src/conexus/core/memory/wiki/{backend,local}.py`, `src/conexus/core/memory/wiki_store.py` (facade)
 - Phase 11 plan: `docs/superpowers/plans/2026-05-03-phase-11-connector-marketplace.md`
 - OAuth stack: `src/conexus/core/oauth/{pkce,state,metadata,client,errors}.py`
 - Token vault: `src/conexus/core/vault/{crypto,token_vault}.py`
