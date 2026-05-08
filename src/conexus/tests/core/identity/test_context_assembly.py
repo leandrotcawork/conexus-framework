@@ -20,7 +20,7 @@ from conexus.core.memory.wiki_store import WikiStore
 def setup(tmp_path):
     store = SqliteStore(str(tmp_path / "ctx.db"))
     store.init_db()
-    wiki = WikiStore(str(tmp_path / "wiki"))
+    wiki = WikiStore.local(tmp_path / "wiki")
     wiki.write("about.md", "# About")
     wiki.write("preferences/morning.md", "# Morning")
     blocks = BlockStore(store)

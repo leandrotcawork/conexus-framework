@@ -1,190 +1,58 @@
-"""WikiStore: filesystem-backed markdown wiki for agents.
+"""WikiStore: thin facade over a WikiBackend.
 
-Handles read/write/list/search and git autocommit. Path escape attempts
-(e.g. '../') are rejected.
+Phase 1 ships LocalBackend only. Phase 2 adds GitHubAppBackend with remote sync.
+Append-log and index helpers are framework-level conveniences that delegate to
+the backend.
 """
-
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 
+from conexus.core.memory.wiki import LocalBackend, WikiBackend
+
 
 class WikiStore:
-    def __init__(self, root: str | Path, *, autocommit: bool = True, ssh_cmd: str | None = None):
-        self.root = Path(root).resolve()
-        self.autocommit = autocommit
-        self._ssh_cmd = ssh_cmd  # overrides GIT_SSH_COMMAND for push/commit ops
-        self.root.mkdir(parents=True, exist_ok=True)
+    def __init__(self, backend_or_root: WikiBackend | str | Path) -> None:
+        if isinstance(backend_or_root, (str, Path)):
+            # Back-compat shim: legacy callers pass a path; build LocalBackend.
+            self._backend: WikiBackend = LocalBackend(backend_or_root)
+        else:
+            self._backend = backend_or_root
 
-    # ----- path safety -----
+    @classmethod
+    def local(cls, root: str | Path) -> "WikiStore":
+        return cls(LocalBackend(root))
 
-    def _resolve(self, relpath: str) -> Path:
-        p = (self.root / relpath).resolve()
-        try:
-            p.relative_to(self.root)
-        except ValueError:
-            raise ValueError(f"path escapes wiki root: {relpath}")
-        return p
+    # ----- delegation -----
 
-    # ----- basic ops -----
+    def read(self, path: str) -> str:
+        return self._backend.read(path)
 
-    def read(self, relpath: str) -> str:
-        p = self._resolve(relpath)
-        if not p.exists():
-            raise FileNotFoundError(relpath)
-        return p.read_text(encoding="utf-8")
-
-    def write(self, relpath: str, content: str) -> None:
-        p = self._resolve(relpath)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
-        if self.autocommit:
-            self._git_commit_push(f"wiki: update {relpath}")
+    def write(self, path: str, content: str) -> None:
+        self._backend.write(path, content)
 
     def list(self, folder: str = "") -> list[str]:
-        base = self._resolve(folder) if folder else self.root
-        if not base.exists():
-            return []
-        out: list[str] = []
-        for p in base.rglob("*.md"):
-            out.append(str(p.relative_to(self.root)).replace("\\", "/"))
-        return out
-
-    def delete(self, relpath: str) -> None:
-        p = self._resolve(relpath)
-        if not p.exists():
-            raise FileNotFoundError(relpath)
-        p.unlink()
-        if self.autocommit:
-            self._git_commit_push(f"wiki: delete {relpath}")
+        return self._backend.list(folder)
 
     def search(self, query: str) -> list[dict]:
-        q = query.lower()
-        hits: list[dict] = []
-        for rel in self.list():
-            text = self.read(rel)
-            if q in text.lower():
-                idx = text.lower().find(q)
-                start = max(0, idx - 40)
-                end = min(len(text), idx + 80)
-                snippet = text[start:end].replace("\n", " ")
-                hits.append({"path": rel, "snippet": snippet})
-        return hits
+        return self._backend.search(query)
 
-    # ----- log & index (implemented in task 2.2) -----
+    def delete(self, path: str) -> None:
+        self._backend.delete(path)
 
-    def append_log(self, kind: str, title: str, body: str) -> None:
+    # ----- conveniences -----
+
+    def append_log(self, kind: str, title: str, body: str = "") -> None:
         ts = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
         entry = f"\n## [{ts}] {kind} | {title}\n{body}\n"
-        p = self._resolve("log.md")
-        if not p.exists():
-            p.write_text("# Wiki Log\n\n", encoding="utf-8")
-        with p.open("a", encoding="utf-8") as f:
-            f.write(entry)
-        if self.autocommit:
-            self._git_commit_push(f"wiki-log: {kind} | {title}")
+        existing = self._backend.read("log.md") if self._backend.exists("log.md") else "# Wiki Log\n\n"
+        self._backend.write("log.md", existing + entry)
 
     def update_index(self, path: str, summary: str) -> None:
-        p = self._resolve("index.md")
-        if not p.exists():
-            p.write_text("# Wiki Index\n\n", encoding="utf-8")
-        existing = p.read_text(encoding="utf-8").splitlines()
-
-        # Drop any existing line that references this path
+        existing = self._backend.read("index.md") if self._backend.exists("index.md") else "# Wiki Index\n\n"
+        lines = [ln for ln in existing.splitlines() if f"({path})" not in ln]
         label = Path(path).stem
-        keep = [ln for ln in existing if f"({path})" not in ln]
-
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        new_line = f"- [{label}]({path}) — {summary} ({date_str})"
-        keep.append(new_line)
-
-        p.write_text("\n".join(keep) + "\n", encoding="utf-8")
-        if self.autocommit:
-            self._git_commit_push(f"wiki-index: {path}")
-
-    # ----- git -----
-
-    def _git_commit_push(self, message: str) -> None:
-        """Fire-and-forget git add/commit/push. Silent on failure (logged to stderr)."""
-        import os
-        import subprocess
-        import sys
-
-        if not (self.root / ".git").exists():
-            return  # no git repo — wiki writes still persist on the volume
-
-        env = ({**os.environ, "GIT_SSH_COMMAND": self._ssh_cmd}
-               if self._ssh_cmd else None)
-
-        try:
-            subprocess.run(
-                ["git", "-C", str(self.root), "add", "-A"],
-                check=True, capture_output=True, text=True, timeout=10, env=env,
-            )
-            result = subprocess.run(
-                [
-                    "git", "-C", str(self.root),
-                    "-c", "user.email=isaac@conexus.bot",
-                    "-c", "user.name=Isaac (Conexus)",
-                    "commit", "-m", message,
-                ],
-                capture_output=True, text=True, timeout=10, env=env,
-            )
-            if result.returncode != 0 and "nothing to commit" not in result.stdout:
-                print(f"[wiki] commit failed: {result.stdout} {result.stderr}", file=sys.stderr)
-                return
-            branch_result = subprocess.run(
-                ["git", "-C", str(self.root), "rev-parse", "--abbrev-ref", "HEAD"],
-                capture_output=True, text=True, timeout=5, env=env,
-            )
-            current_branch = branch_result.stdout.strip()
-            # Detached HEAD (rev-parse returns "HEAD") or empty — reattach to main.
-            if not current_branch or current_branch == "HEAD":
-                try:
-                    default_result = subprocess.run(
-                        ["git", "-C", str(self.root), "symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
-                        check=True, capture_output=True, text=True, timeout=5, env=env,
-                    )
-                    detected_branch = default_result.stdout.strip().removeprefix("origin/")
-                    subprocess.run(
-                        ["git", "-C", str(self.root), "checkout", detected_branch],
-                        check=True, capture_output=True, text=True, timeout=10, env=env,
-                    )
-                    branch = detected_branch
-                except subprocess.CalledProcessError as e:
-                    print(f"[wiki] branch checkout failed: {e}", file=sys.stderr)
-                    return
-            else:
-                branch = current_branch
-            # Skip push if no remote is configured (e.g. local-only wiki in dev)
-            remote_check = subprocess.run(
-                ["git", "-C", str(self.root), "remote", "get-url", "origin"],
-                capture_output=True, text=True, timeout=5, env=env,
-            )
-            if remote_check.returncode != 0:
-                return
-            # Pull remote changes before pushing to avoid "fetch first" rejections.
-            pull = subprocess.run(
-                ["git", "-C", str(self.root), "pull", "--rebase", "origin", branch],
-                capture_output=True, text=True, timeout=30, env=env,
-            )
-            if pull.returncode != 0:
-                # Rebase conflict — abort so the repo isn't left mid-rebase.
-                subprocess.run(
-                    ["git", "-C", str(self.root), "rebase", "--abort"],
-                    capture_output=True, text=True, timeout=10, env=env,
-                )
-                print(f"[wiki] pull/rebase failed; aborted. stderr: {pull.stderr[:300]}",
-                      file=sys.stderr)
-                return
-            push = subprocess.run(
-                ["git", "-C", str(self.root), "push", "origin", branch],
-                capture_output=True, text=True, timeout=30, env=env,
-            )
-            if push.returncode != 0:
-                print(f"[wiki] push failed (rc={push.returncode}): {push.stderr[:300]}", file=sys.stderr)
-            else:
-                print(f"[wiki] pushed OK: {message}", flush=True)
-        except Exception as e:
-            print(f"[wiki] git sync error: {e}", file=sys.stderr)
+        lines.append(f"- [{label}]({path}) — {summary} ({date_str})")
+        self._backend.write("index.md", "\n".join(lines) + "\n")

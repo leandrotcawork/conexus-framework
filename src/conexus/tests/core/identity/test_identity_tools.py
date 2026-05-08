@@ -15,7 +15,7 @@ from conexus.core.memory.wiki_store import WikiStore
 def deps(tmp_path):
     store = SqliteStore(str(tmp_path / "id.db"))
     store.init_db()
-    wiki = WikiStore(str(tmp_path / "wiki"))
+    wiki = WikiStore.local(tmp_path / "wiki")
     blocks = BlockStore(store)
     tools = IdentityTools(
         agent_id="ana",
