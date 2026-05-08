@@ -23,18 +23,14 @@ class LLMService:
     def __init__(self, config: LLMConfig, agent_name: str):
         self.config = config
         self.agent_name = agent_name
-        self._router: Router | None = None
-
-    def _get_router(self) -> Router:
-        if self._router is None:
-            self._router = Router(
-                model_list=self._build_model_list(),
-                fallbacks=self._build_fallbacks(),
-                num_retries=3,
-                cooldown_time=60,
-                timeout=60,
-            )
-        return self._router
+        self._router = Router(
+            model_list=self._build_model_list(),
+            fallbacks=self._build_fallbacks(),
+            num_retries=3,
+            cooldown_time=60,
+            timeout=60,
+            retry_after=5,
+        )
 
     def _build_model_list(self) -> list[dict]:
         cfg = self.config
@@ -62,7 +58,7 @@ class LLMService:
     async def acompletion(self, messages: list[dict], **kw) -> Any:
         meta = dict(kw.pop("metadata", {}) or {})
         meta["agent_name"] = self.agent_name
-        return await self._get_router().acompletion(
+        return await self._router.acompletion(
             model="primary", messages=messages, metadata=meta, **kw,
         )
 
