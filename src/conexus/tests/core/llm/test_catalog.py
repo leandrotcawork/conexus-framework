@@ -76,3 +76,11 @@ def test_list_models_falls_back_when_live_empty(monkeypatch):
         models = catalog.list_models("openai")
     assert isinstance(models, list)
     assert len(models) > 0  # fell back to bundled catalog
+
+
+def test_cache_clear_lets_env_change_take_effect(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    assert "deepseek" not in catalog.list_providers()
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
+    catalog.list_providers.cache_clear()
+    assert "deepseek" in catalog.list_providers()
