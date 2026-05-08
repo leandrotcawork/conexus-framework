@@ -18,6 +18,7 @@ from conexus.core.agent_registry import AgentRegistry
 from conexus.core.backends.python_backend import PythonBackend
 from conexus.core.budget.cap_checker import CapChecker
 from conexus.core.config.skill_loader import parse_skill_file
+from conexus.core.llm import telemetry
 from conexus.core.llm.usage_tracker import UsageTracker
 from conexus.core.skills.skill_resolver import SkillLoader
 from conexus.core.tools.schema_gen import generate_tool_schemas
@@ -31,9 +32,20 @@ class _Session:
     store: Any
     cap_checker: Any
     loader: SkillLoader | None = None
+    skill_mtime: float = 0.0
+    tools_mtime: float = 0.0
 
 
 _SESSIONS: dict[tuple[str, str], _Session] = {}
+
+
+def _agent_mtimes(agents_dir: Path, agent_name: str) -> tuple[float, float]:
+    skill = agents_dir / agent_name / "SKILL.md"
+    tools = agents_dir / agent_name / "tools.py"
+    return (
+        skill.stat().st_mtime if skill.exists() else 0.0,
+        tools.stat().st_mtime if tools.exists() else 0.0,
+    )
 
 
 def _build_session(agent_name: str, agents_dir: Path, data_dir: Path) -> _Session:
@@ -71,6 +83,8 @@ def _build_session(agent_name: str, agents_dir: Path, data_dir: Path) -> _Sessio
     pack_prompt, _tags = loader.load(skill.frontmatter.skills)
     system_prompt = skill.body + (("\n\n" + pack_prompt) if pack_prompt else "")
 
+    telemetry.install(store)
+
     runtime = build_runtime(
         str(skill_path),
         tools_obj=tools,
@@ -102,6 +116,7 @@ def _build_session(agent_name: str, agents_dir: Path, data_dir: Path) -> _Sessio
             runtime.handler_cfg.tools_schema.append(schema)
             existing.add(schema["function"]["name"])
 
+    skill_mt, tools_mt = _agent_mtimes(agents_dir, agent_name)
     return _Session(
         registry=registry,
         tracker=tracker,
@@ -109,6 +124,8 @@ def _build_session(agent_name: str, agents_dir: Path, data_dir: Path) -> _Sessio
         store=store,
         cap_checker=CapChecker(tracker),
         loader=loader,
+        skill_mtime=skill_mt,
+        tools_mtime=tools_mt,
     )
 
 
@@ -116,7 +133,9 @@ async def run_one_message(
     agent_name: str, message: str, *, agents_dir: Path, data_dir: Path, session_id: str
 ) -> str:
     key = (agent_name, session_id)
-    if key not in _SESSIONS:
+    skill_mt, tools_mt = _agent_mtimes(agents_dir, agent_name)
+    cached = _SESSIONS.get(key)
+    if cached is None or cached.skill_mtime != skill_mt or cached.tools_mtime != tools_mt:
         _SESSIONS[key] = _build_session(agent_name, agents_dir, data_dir)
     s = _SESSIONS[key]
     return await handle_agent_message(s.runtime.handler_cfg, s.store, s.cap_checker, message)

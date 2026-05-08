@@ -10,7 +10,8 @@ from conexus.cli.identity_runtime import IdentityRuntime, build_identity_runtime
 from conexus.core.agent_handler import AgentHandlerConfig
 from conexus.core.budget.cap_checker import BudgetCap
 from conexus.core.config.skill_loader import parse_skill_file
-from conexus.core.llm.router import LLMConfig, build_llm
+from conexus.core.llm.service import LLMConfig, build_llm
+from conexus.core.llm import telemetry
 from conexus.core.llm.usage_tracker import UsageTracker
 from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.tools.schema_gen import generate_tool_schemas
@@ -50,7 +51,9 @@ def build_runtime(
         temperature=skill.frontmatter.llm.temperature,
         fallback=[{"provider": f.provider, "model": f.model} for f in skill.frontmatter.llm.fallback],
     )
-    llm = build_llm(llm_cfg, tracker, agent_name=agent_name)
+    if store is not None:
+        telemetry.install(store)
+    llm = build_llm(llm_cfg, agent_name=agent_name)
 
     budget = BudgetCap(
         daily_usd=skill.frontmatter.budget.daily_usd,
