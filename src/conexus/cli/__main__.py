@@ -50,6 +50,7 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
     from conexus.core.agent_registry import AgentRegistry
     from conexus.core.budget.cap_checker import CapChecker
     from conexus.core.config.skill_loader import parse_skill_file
+    from conexus.core.llm import telemetry
     from conexus.core.llm.usage_tracker import UsageTracker
     from conexus.cli.runner import build_runtime
 
@@ -59,6 +60,7 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
 
     data_dir.mkdir(parents=True, exist_ok=True)
     store, tools = _make_tools(agent_name, agents_dir, data_dir)
+    telemetry.install(store)
 
     registry = AgentRegistry()
     registry.register(agent_name, tools)

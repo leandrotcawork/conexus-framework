@@ -51,8 +51,6 @@ def build_runtime(
         temperature=skill.frontmatter.llm.temperature,
         fallback=[{"provider": f.provider, "model": f.model} for f in skill.frontmatter.llm.fallback],
     )
-    if store is not None:
-        telemetry.install(store)
     llm = build_llm(llm_cfg, agent_name=agent_name)
 
     budget = BudgetCap(
