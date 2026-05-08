@@ -14,6 +14,15 @@ import os
 import urllib.request
 from functools import lru_cache
 
+# All providers surfaced in Studio — simple API key, chat-capable, actively maintained.
+# Allowlist beats blocklist: litellm has 100+ entries including legacy/obscure providers.
+ALL_PROVIDERS: tuple[str, ...] = (
+    "openai", "anthropic", "gemini", "deepseek", "groq",
+    "mistral", "cohere", "together_ai", "perplexity", "fireworks_ai",
+    "xai", "huggingface", "replicate", "openrouter", "anyscale",
+    "ollama", "databricks", "predibase",
+)
+
 SUPPORTED_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "gemini", "deepseek", "groq")
 
 # Providers where litellm probes /v1/models live.
@@ -40,10 +49,15 @@ _EXCLUDE: tuple[str, ...] = (
 )
 
 
+def all_providers() -> list[str]:
+    """All reasonable providers — simple API key, chat-capable, actively maintained."""
+    return list(ALL_PROVIDERS)
+
+
 @lru_cache(maxsize=1)
 def list_providers() -> list[str]:
-    """Call .cache_clear() when API key env vars change."""
-    return [p for p in SUPPORTED_PROVIDERS if os.environ.get(_ENV_KEY[p])]
+    """Configured-only subset — providers with API key present in env."""
+    return [p for p in ALL_PROVIDERS if os.environ.get(_ENV_KEY.get(p, f"{p.upper()}_API_KEY"))]
 
 
 @lru_cache(maxsize=8)
@@ -75,9 +89,15 @@ def get_info(model: str) -> dict:
         return {}
 
 
-def llm_options() -> dict[str, list[str]]:
-    """Compat shim — same shape as old pricing.llm_options()."""
-    return {p: list_models(p) for p in list_providers()}
+def llm_options(configured_only: bool = False) -> dict[str, list[str]]:
+    """Return {provider: [models]}. configured_only=True filters to key-present providers."""
+    providers = list_providers() if configured_only else all_providers()
+    return {p: list_models(p) for p in providers}
+
+
+def configured_providers() -> set[str]:
+    """Set of providers that have an API key in env."""
+    return set(list_providers())
 
 
 def _direct_live_models(provider: str) -> list[str]:

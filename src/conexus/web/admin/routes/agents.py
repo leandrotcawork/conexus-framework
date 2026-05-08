@@ -7,7 +7,7 @@ import yaml
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from conexus.core.llm.catalog import llm_options
+from conexus.core.llm.catalog import configured_providers, llm_options
 from conexus.core.packs.installer import InstallError, _safe_name
 from conexus.core.packs.registry import PacksRegistry
 from ..services.agent_repo import list_agents, read_agent
@@ -78,7 +78,8 @@ def make_agents_router() -> APIRouter:
                 "capability": capability,
                 "readonly": True,
                 "raw_skill_md": agent.skill_path.read_text(encoding="utf-8"),
-                "llm_options": llm_options(),
+                "llm_options": llm_options(configured_only=False),
+                "configured_providers": list(configured_providers()),
                 "available_packs": PacksRegistry.load(
                     ctx.repo_root / "packs" / "registry.json"
                 ).list(kind="skill"),
