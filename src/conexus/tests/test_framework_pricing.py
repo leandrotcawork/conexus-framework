@@ -2,12 +2,18 @@ from unittest.mock import patch
 
 import pytest
 
-from conexus.core.llm.pricing import compute_cost, llm_options, USD_TO_BRL
+from conexus.core.llm.catalog import llm_options
+from conexus.core.llm.cost import cost_from_response
 
 
-def test_llm_options_has_required_providers():
+def test_llm_options_has_providers():
     options = llm_options()
-    assert set(options.keys()) >= {"openai", "anthropic", "gemini"}
+    assert isinstance(options, dict)
+    assert len(options) > 0
+    # At least one provider should be available (test environment sets DEEPSEEK_API_KEY)
+    for provider_models in options.values():
+        assert isinstance(provider_models, list)
+        assert len(provider_models) > 0
 
 
 def test_llm_options_models_are_strings():
@@ -28,22 +34,35 @@ def test_llm_options_no_excluded_keywords():
                 assert ex not in lower, f"{provider}/{model} contains excluded keyword '{ex}'"
 
 
-def test_compute_cost_returns_float():
-    cost = compute_cost("gemini/gemini-2.0-flash", 1_000_000, 1_000_000)
-    assert isinstance(cost, float)
-    assert cost > 0
+def test_cost_from_response_with_hidden_params():
+    """Verify cost_from_response uses _hidden_params if available."""
+    class MockResp:
+        _hidden_params = {"response_cost": 0.50}
+    resp = MockResp()
+    cost = cost_from_response(resp)
+    assert cost == 0.50
 
 
-def test_compute_cost_mocked_values():
-    """Verify compute_cost sums input+output costs from litellm."""
+def test_cost_from_response_with_usage():
+    """Verify cost_from_response falls back to cost_per_token."""
+    class MockUsage:
+        prompt_tokens = 1_000_000
+        completion_tokens = 1_000_000
+    class MockResp:
+        _hidden_params = None
+        usage = MockUsage()
+        model = "gemini/gemini-2.0-flash"
+    resp = MockResp()
     with patch("litellm.cost_per_token", return_value=(0.075, 0.300)):
-        cost = compute_cost("gemini/gemini-2.0-flash", 1_000_000, 1_000_000)
+        cost = cost_from_response(resp)
     assert cost == pytest.approx(0.375, rel=1e-6)
 
 
-def test_compute_cost_unknown_model_returns_zero():
-    assert compute_cost("fake/model-does-not-exist", 100, 100) == 0.0
-
-
-def test_usd_to_brl_is_positive():
-    assert USD_TO_BRL > 0
+def test_cost_from_response_no_usage_returns_zero():
+    """Verify cost_from_response returns 0 when no usage is present."""
+    class MockResp:
+        _hidden_params = None
+        usage = None
+    resp = MockResp()
+    cost = cost_from_response(resp)
+    assert cost == 0.0

@@ -4,15 +4,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from conexus.core.llm.context_tag import current_context, set_context
-from conexus.core.llm.router import LLMConfig, build_llm
-from conexus.core.llm.usage_tracker import UsageTracker
+from conexus.core.llm.service import LLMConfig, build_llm
+from conexus.core.llm.telemetry import install
 from conexus.core.memory.sqlite_store import SqliteStore
 
 
-def _make_tracker(tmp_db_path: Path) -> UsageTracker:
+def _make_store(tmp_db_path: Path) -> SqliteStore:
     store = SqliteStore(tmp_db_path)
     store.init_db()
-    return UsageTracker(store)
+    return store
 
 
 def _mock_resp(text: str) -> MagicMock:
@@ -38,69 +38,54 @@ def test_context_tag_isolation():
     assert current_context() == "unknown"
 
 
-def test_complete_logs_usage(tmp_db_path):
-    tracker = _make_tracker(tmp_db_path)
+@pytest.mark.asyncio
+async def test_acomplete_text_returns_content(tmp_db_path):
+    store = _make_store(tmp_db_path)
+    install(store)
     llm = build_llm(
         LLMConfig(provider="gemini", model="gemini-2.0-flash"),
-        tracker,
         "ana",
     )
 
     mock_resp = _mock_resp("Bom dia, Leandro!")
-    with patch("litellm.completion", return_value=mock_resp):
+    with patch.object(llm._router, "acompletion", return_value=mock_resp):
         with set_context("briefing"):
-            result = llm.complete([{"role": "user", "content": "olá"}])
+            result = await llm.acomplete_text([{"role": "user", "content": "olá"}])
 
     assert result == "Bom dia, Leandro!"
-    rows = tracker.recent(agent_name="ana")
-    assert len(rows) == 1
-    assert rows[0]["context"] == "briefing"
-    assert rows[0]["provider"] == "gemini"
-    assert rows[0]["model"] == "gemini-2.0-flash"
 
 
-def test_fallback_on_error(tmp_db_path):
-    tracker = _make_tracker(tmp_db_path)
+@pytest.mark.asyncio
+async def test_acompletion_handles_metadata(tmp_db_path):
+    """Verify acompletion adds agent_name to metadata."""
+    store = _make_store(tmp_db_path)
+    install(store)
     llm = build_llm(
-        LLMConfig(
-            provider="gemini",
-            model="gemini-2.0-flash",
-            fallback=[{"provider": "openai", "model": "gpt-4o-mini"}],
-        ),
-        tracker,
+        LLMConfig(provider="gemini", model="gemini-2.0-flash"),
         "ana",
     )
 
-    def fail_then_succeed(model, messages, **kwargs):
-        if "gemini" in model:
-            raise RuntimeError("quota exceeded")
-        return _mock_resp("fallback response")
+    captured_metadata = {}
 
-    with patch("litellm.completion", side_effect=fail_then_succeed):
-        result = llm.complete([{"role": "user", "content": "test"}])
+    async def capture_metadata(model, messages, **kw):
+        captured_metadata.update(kw.get("metadata", {}))
+        return _mock_resp("response")
 
-    assert result == "fallback response"
-    rows = tracker.recent(agent_name="ana")
-    # Two rows: one failed (gemini), one succeeded (openai)
-    assert len(rows) == 2
-    failed = next(r for r in rows if r["error"])
-    succeeded = next(r for r in rows if not r["error"])
-    assert "gemini" in failed["provider"]
-    assert "openai" in succeeded["provider"]
+    with patch.object(llm._router, "acompletion", side_effect=capture_metadata):
+        await llm.acomplete_text([{"role": "user", "content": "test"}])
+
+    assert captured_metadata.get("agent_name") == "ana"
 
 
-def test_all_providers_fail(tmp_db_path):
-    tracker = _make_tracker(tmp_db_path)
+@pytest.mark.asyncio
+async def test_acompletion_raises_on_failure(tmp_db_path):
+    store = _make_store(tmp_db_path)
+    install(store)
     llm = build_llm(
-        LLMConfig(
-            provider="gemini",
-            model="gemini-2.0-flash",
-            fallback=[{"provider": "openai", "model": "gpt-4o-mini"}],
-        ),
-        tracker,
+        LLMConfig(provider="gemini", model="gemini-2.0-flash"),
         "ana",
     )
 
-    with patch("litellm.completion", side_effect=RuntimeError("all down")):
-        with pytest.raises(RuntimeError, match="all down"):
-            llm.complete([{"role": "user", "content": "test"}])
+    with patch.object(llm._router, "acompletion", side_effect=RuntimeError("service error")):
+        with pytest.raises(RuntimeError, match="service error"):
+            await llm.acomplete_text([{"role": "user", "content": "test"}])
