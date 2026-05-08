@@ -1,8 +1,8 @@
 # 07 — RAG and Wiki-Based Knowledge for Agents
 
 > Audience: senior engineers + Claude working on **Conexus**.
-> Status: opinionated reference, 2026-04 snapshot.
-> Premise: Conexus already has a **git-backed markdown wiki** (Ana writes/reads notes, Pesquisador compiles articles). There are **no embeddings yet** — retrieval today is filename routing + full-file reads. This document covers what RAG is in 2026, what's worth adopting, and what to stay away from until we need it.
+> Status: opinionated reference, 2026-05 snapshot.
+> Premise: Conexus has a **pluggable markdown wiki** (Phase 1: `LocalBackend` — plain filesystem per agent; Phase 2: `GitHubAppBackend` with remote sync). Ana and Pesquisador read/write notes via `WikiStore`. There are **no embeddings yet** — retrieval today is filename routing + full-file reads. This document covers what RAG is in 2026, what's worth adopting, and what to stay away from until we need it.
 
 ---
 
@@ -134,7 +134,16 @@ Ecosystem worth watching:
 - **Docusaurus + AI** — if you want to publish a subset of the wiki as a static site, Docusaurus with an MDX-aware RAG plugin is the 2026 default.
 - **Quartz / Astro Starlight** — for public publishing with minimal ceremony.
 
-For Conexus, the pragmatic stack is: **Obsidian as the human UI, git as transport, agents as collaborators.** We do not need a CMS.
+For Conexus, the pragmatic stack is: **Obsidian as the human UI, git as transport (Phase 2), agents as collaborators.** We do not need a CMS.
+
+**Phase 1 Conexus wiki architecture (shipped 2026-05-08).** The wiki layer is now pluggable:
+
+- `WikiBackend` Protocol (`src/conexus/core/memory/wiki/backend.py:8`) — `@runtime_checkable`, six methods (`read/write/list/search/exists/delete`). `safe_join(root, relpath)` (line 20) is the path-safety contract: rejects `..`, absolute paths, backslashes, and symlink escapes.
+- `LocalBackend` (`src/conexus/core/memory/wiki/local.py:9`) — plain filesystem impl. Auto-creates root dir. `list()` returns POSIX-relative paths. `search()` is substring grep with 120-char snippets. No auth, no network, no git.
+- `WikiStore` (`src/conexus/core/memory/wiki_store.py`) — thin facade. `__init__` accepts `WikiBackend | str | Path`; `str/Path` builds a `LocalBackend` (back-compat shim). `WikiStore.local(root)` is the preferred factory.
+- Backend is declared in SKILL.md: `identity.wiki.backend: local` (default) or `github_app` (Phase 2, raises `NotImplementedError` today — `src/conexus/cli/identity_runtime.py:53`).
+- Per-agent wiki directories live at `agents/<name>/wiki/` (excluded from git via `.gitignore` rule `agents/*/wiki/`).
+- `GitHubAppBackend` with remote sync is Phase 2. Phase 1 is local-only — no git commits happen during wiki writes.
 
 ---
 

@@ -46,6 +46,7 @@ identity:
     enabled: true
     inject_recent: 5           # inject N most-recently-updated facts into system prompt (0 = tool-pull only)
   wiki:
+    backend: local             # "local" (default) or "github_app" (Phase 2)
     dir: ./wiki/ana            # relative to SKILL.md directory, or absolute
     inject_index: true         # prepend wiki file list to system prompt
   history:                     # HistoryCompactor config; defaults shown
@@ -53,9 +54,10 @@ identity:
     keep_verbatim: 6
     summary_budget: 800
     trigger_pct: 0.80
+  prompt_override: null        # optional: path to custom memory-routing prompt (.md); default null uses DEFAULT_MEMORY_PROMPT_PT_BR
 ```
 
-`BlockSpec.coerce` is called via a Pydantic v2 `@field_validator("blocks", mode="before")` on `IdentitySection` (`src/conexus/core/config/skill_loader.py:72`) so integer shorthand in YAML is valid. All sub-sections default safely: `blocks: {}`, `facts.enabled: False`, `wiki: None`, `history` with the values above. An agent without an `identity:` block in its SKILL.md is entirely unaffected.
+`BlockSpec.coerce` is called via a Pydantic v2 `@field_validator("blocks", mode="before")` on `IdentitySection` (`src/conexus/core/config/skill_loader.py:85`) so integer shorthand in YAML is valid. All sub-sections default safely: `blocks: {}`, `facts.enabled: False`, `wiki: WikiSection(backend="local", dir="./wiki")` (Phase 1 change — was `None`; now defaults to a local wiki so agents without an explicit `wiki:` block still get one), `history` with the values above, `prompt_override: None`. An agent without an `identity:` block in its SKILL.md is entirely unaffected.
 
 **Phase 8 addition — `AgentHandlerConfig` cross-agent fields** (`src/conexus/core/agent_handler.py:39`):
 
@@ -151,7 +153,7 @@ A Conexus system prompt is assembled from layers. Order matters for both **atten
 └─────────────────────────────────────────────────────────────┘
 ```
 
-When `identity.enabled`, layer 0 is produced by `assemble_identity_context` (`src/conexus/core/identity/context.py`) and prepended to the system prompt string before the BRT timestamp append. It is *volatile* — blocks and facts change turn to turn — so it cannot share a cache breakpoint with the persona. Agents without `identity:` in SKILL.md see no change.
+When `identity.enabled`, layer 0 is produced by `assemble_identity_context(agent_id, cfg, store, wiki, blocks, skill_dir)` (`src/conexus/core/identity/context.py:13`) and prepended to the system prompt string before the BRT timestamp append. Its first sub-section is always the memory-routing prompt (`src/conexus/core/identity/prompt.py` — `DEFAULT_MEMORY_PROMPT_PT_BR` unless `identity.prompt_override` points to a custom file). Subsequent sub-sections are blocks, recent facts, and wiki index — all volatile. Because layer 0 is volatile it cannot share a cache breakpoint with the persona. Agents without `identity:` in SKILL.md see no change. `handle_agent_message` passes `ir.skill_dir` as the last argument so `load_memory_prompt` can resolve a relative `prompt_override` path (`src/conexus/core/agent_handler.py:116–123`).
 
 Rule of thumb: **everything above the dashed line must be byte-identical across turns**. If you jam `datetime.now()` into line 1 you will never get a cache hit.
 
