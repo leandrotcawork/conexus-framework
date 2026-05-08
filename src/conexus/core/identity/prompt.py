@@ -33,4 +33,9 @@ def load_memory_prompt(override: str | None, skill_dir: Path | None) -> str:
     p = Path(override)
     if not p.is_absolute() and skill_dir is not None:
         p = skill_dir / p
+    if not p.exists():
+        raise FileNotFoundError(
+            f"identity.prompt_override not found: {p}. "
+            "Check the path in SKILL.md."
+        )
     return p.read_text(encoding="utf-8")
