@@ -29,13 +29,14 @@ def test_build_fallbacks_empty_when_none():
 
 
 def test_build_fallbacks_chains_primary_to_fallback_names():
-    svc = LLMService(
-        LLMConfig(
-            provider="a", model="m",
-            fallback=[{"provider": "b", "model": "m"}, {"provider": "c", "model": "m"}],
-        ),
-        agent_name="t",
-    )
+    with patch("conexus.core.llm.service.Router"):
+        svc = LLMService(
+            LLMConfig(
+                provider="a", model="m",
+                fallback=[{"provider": "b", "model": "m"}, {"provider": "c", "model": "m"}],
+            ),
+            agent_name="t",
+        )
     assert svc._build_fallbacks() == [{"primary": ["fb0", "fb1"]}]
 
 
