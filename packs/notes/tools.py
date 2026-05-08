@@ -13,9 +13,20 @@ def _now_iso() -> str:
 
 class NoteTools:
     _tool_schemas: ClassVar[dict] = {
-        "add_note":    {"description": "Save a short free-text note for the user."},
-        "list_notes":  {"description": "List recent notes (most recent first)."},
-        "search_notes":{"description": "Substring search across saved notes."},
+        "add_note": {
+            "description": (
+                "Adiciona uma anotação efêmera (lista, recado curto, rascunho). "
+                "NÃO use para informações pessoais permanentes (nome, família, "
+                "preferências) — para isso use memory_set. NÃO use para conteúdo "
+                "narrativo longo — use wiki_write."
+            )
+        },
+        "list_notes": {
+            "description": "Lista anotações efêmeras recentes (mais novas primeiro)."
+        },
+        "search_notes": {
+            "description": "Busca por substring nas anotações efêmeras salvas."
+        },
     }
 
     def __init__(self, store: SqliteStore, agent_name: str) -> None:
