@@ -60,3 +60,19 @@ def test_llm_options_shape(monkeypatch):
     opts = catalog.llm_options()
     assert "deepseek" in opts
     assert isinstance(opts["deepseek"], list)
+
+
+def test_list_models_falls_back_when_live_raises(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    with patch("litellm.get_valid_models", side_effect=Exception("network error")):
+        models = catalog.list_models("anthropic")
+    assert isinstance(models, list)
+    assert len(models) > 0  # fell back to bundled catalog
+
+
+def test_list_models_falls_back_when_live_empty(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    with patch("litellm.get_valid_models", return_value=[]):
+        models = catalog.list_models("openai")
+    assert isinstance(models, list)
+    assert len(models) > 0  # fell back to bundled catalog
