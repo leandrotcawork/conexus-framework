@@ -13,11 +13,17 @@ Tools exposed (each becomes available to the agent via tool calling):
   - wiki_search(query) -> list[{"path", "snippet"}]
   - wiki_write(path, content) -> {"ok": True}
   - wiki_append_log(kind, title, body) -> {"ok": True}
+  - wiki_delete(path) -> {"deleted": bool}
+  - wiki_exists(path) -> bool
+  - wiki_move(src, dst) -> {"moved": str, "to": str, "backlinks_updated": int}
+  - wiki_lint() -> {"dead_links": list, "orphans": list, "missing_frontmatter": list, "stub_pages": list, "stale_index": list}
+  - wiki_index_update(path, summary) -> {"ok": True}
 """
 from __future__ import annotations
 
 from conexus.core.identity.blocks import BlockStore, BlockOverBudgetError
 from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.wiki.lint import lint_wiki
 from conexus.core.memory.wiki_store import WikiStore
 
 
@@ -98,20 +104,25 @@ class IdentityTools:
 
     def wiki_delete(self, path: str) -> dict:
         self._require_wiki().delete(path)
-        return {"deleted": path}
+        return {"deleted": True}
 
     def wiki_exists(self, path: str) -> bool:
         return self._require_wiki().exists(path)
 
     def wiki_move(self, src: str, dst: str) -> dict:
-        self._require_wiki().move(src, dst)
-        return {"moved": src, "to": dst}
+        result = self._require_wiki().move(src, dst)
+        return {"moved": src, "to": dst, "backlinks_updated": result.get("backlinks_updated", 0)}
 
     def wiki_lint(self) -> dict:
-        report = self._require_wiki().lint()
-        dead_links = [list(link) for link in report.dead_links]
-        return {"dead_links": dead_links, "warnings": report.warnings}
+        report = lint_wiki(self._require_wiki())
+        return {
+            "dead_links": [list(link) for link in report.dead_links],
+            "orphans": report.orphans,
+            "missing_frontmatter": report.missing_frontmatter,
+            "stub_pages": report.stub_pages,
+            "stale_index": report.stale_index,
+        }
 
     def wiki_index_update(self, path: str, summary: str) -> dict:
-        self._require_wiki().index_update(path, summary)
-        return {"indexed": path}
+        self._require_wiki().update_index(path, summary)
+        return {"ok": True}

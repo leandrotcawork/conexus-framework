@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-from collections import namedtuple
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from conexus.core.identity.blocks import BlockStore
 from conexus.core.identity.tools import IdentityTools
 from conexus.core.memory.sqlite_store import SqliteStore
-
-
-class _DummyReport:
-    def __init__(self, dead_links, warnings):
-        self.dead_links = dead_links
-        self.warnings = warnings
 
 
 def _make_tools(tmp_path):
@@ -27,12 +20,12 @@ def _make_tools(tmp_path):
     )
 
 
-def test_wiki_delete_returns_deleted_path(tmp_path, monkeypatch):
+def test_wiki_delete_returns_deleted_bool(tmp_path, monkeypatch):
     tools = _make_tools(tmp_path)
     wiki = Mock()
     monkeypatch.setattr(tools, "_require_wiki", lambda: wiki)
 
-    assert tools.wiki_delete(path="notes/a.md") == {"deleted": "notes/a.md"}
+    assert tools.wiki_delete(path="notes/a.md") == {"deleted": True}
     wiki.delete.assert_called_once_with("notes/a.md")
 
 
@@ -46,36 +39,48 @@ def test_wiki_exists_returns_bool(tmp_path, monkeypatch):
     wiki.exists.assert_called_once_with("notes/a.md")
 
 
-def test_wiki_move_returns_mapping(tmp_path, monkeypatch):
+def test_wiki_move_returns_mapping_with_backlinks(tmp_path, monkeypatch):
     tools = _make_tools(tmp_path)
     wiki = Mock()
+    wiki.move.return_value = {"moved": "a.md", "to": "archive/a.md", "backlinks_updated": 3}
     monkeypatch.setattr(tools, "_require_wiki", lambda: wiki)
 
-    assert tools.wiki_move(src="a.md", dst="archive/a.md") == {"moved": "a.md", "to": "archive/a.md"}
+    result = tools.wiki_move(src="a.md", dst="archive/a.md")
+    assert result == {"moved": "a.md", "to": "archive/a.md", "backlinks_updated": 3}
     wiki.move.assert_called_once_with("a.md", "archive/a.md")
 
 
 def test_wiki_lint_serializes_dead_links(tmp_path, monkeypatch):
     tools = _make_tools(tmp_path)
     wiki = Mock()
-    DeadLink = namedtuple("DeadLink", ["source", "target"])
-    wiki.lint.return_value = _DummyReport(
-        dead_links=[("a.md", "missing.md"), DeadLink("b.md", "ghost.md")],
-        warnings=["orphan index entry"],
-    )
     monkeypatch.setattr(tools, "_require_wiki", lambda: wiki)
 
-    assert tools.wiki_lint() == {
+    from conexus.core.memory.wiki.lint import LintReport
+    report = LintReport(
+        dead_links=[("a.md", "missing.md"), ("b.md", "ghost.md")],
+        orphans=["orphan.md"],
+        missing_frontmatter=[],
+        stub_pages=[],
+        stale_index=[],
+    )
+
+    with patch("conexus.core.identity.tools.lint_wiki", return_value=report) as mock_lint:
+        result = tools.wiki_lint()
+
+    mock_lint.assert_called_once_with(wiki)
+    assert result == {
         "dead_links": [["a.md", "missing.md"], ["b.md", "ghost.md"]],
-        "warnings": ["orphan index entry"],
+        "orphans": ["orphan.md"],
+        "missing_frontmatter": [],
+        "stub_pages": [],
+        "stale_index": [],
     }
-    wiki.lint.assert_called_once_with()
 
 
-def test_wiki_index_update_returns_indexed_path(tmp_path, monkeypatch):
+def test_wiki_index_update_returns_ok(tmp_path, monkeypatch):
     tools = _make_tools(tmp_path)
     wiki = Mock()
     monkeypatch.setattr(tools, "_require_wiki", lambda: wiki)
 
-    assert tools.wiki_index_update(path="a.md", summary="summary") == {"indexed": "a.md"}
-    wiki.index_update.assert_called_once_with("a.md", "summary")
+    assert tools.wiki_index_update(path="a.md", summary="summary") == {"ok": True}
+    wiki.update_index.assert_called_once_with("a.md", "summary")

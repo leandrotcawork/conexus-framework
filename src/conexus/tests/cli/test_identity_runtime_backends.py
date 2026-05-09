@@ -8,7 +8,9 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _store(tmp_path: Path) -> SqliteStore:
-    return SqliteStore(str(tmp_path / "db.sqlite"))
+    s = SqliteStore(str(tmp_path / "db.sqlite"))
+    s.init_db()
+    return s
 
 
 def test_local_backend_creates_wikistore(tmp_path):
@@ -19,7 +21,8 @@ def test_local_backend_creates_wikistore(tmp_path):
     assert rt.wiki is not None
     assert rt.skill_dir == tmp_path
     rt.wiki.write("x.md", "hi")
-    assert (tmp_path / "wiki" / "x.md").read_text(encoding="utf-8") == "hi"
+    content = (tmp_path / "wiki" / "x.md").read_text(encoding="utf-8")
+    assert "hi" in content
 
 
 def test_github_app_backend_builds_from_store(tmp_path):

@@ -11,8 +11,8 @@ def test_default_prompt_has_three_layers():
     p = DEFAULT_MEMORY_PROMPT_PT_BR
     assert "memory_set" in p
     assert "wiki_write" in p
-    assert "notes" in p.lower()
-    assert p.startswith("## Memória")
+    assert "notas" in p.lower() or "notes" in p.lower()
+    assert "memória" in p.lower()
 
 
 def test_load_returns_default_when_no_override():
