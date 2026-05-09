@@ -111,8 +111,6 @@ class GitHubAppBackend:
         return self._local.exists(path)
 
     def delete(self, path: str) -> None:
-        if not self.exists(path):
-            raise FileNotFoundError(path)
         self._pull()
-        self._local.delete(path)
+        self._local.delete(path)  # raises FileNotFoundError if missing
         self._commit_push(f"chore: delete {path}")

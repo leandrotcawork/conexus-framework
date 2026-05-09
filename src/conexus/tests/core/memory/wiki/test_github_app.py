@@ -79,5 +79,7 @@ def test_exists_no_network(tmp_path: Path) -> None:
 
 def test_delete_missing_raises(tmp_path: Path) -> None:
     b = _make_backend(tmp_path)
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError), \
+         patch("conexus.core.memory.wiki.github_app.get_installation_token", return_value="ghs_tok"), \
+         patch("subprocess.run", return_value=_subprocess_ok()):
         b.delete("nope.md")
