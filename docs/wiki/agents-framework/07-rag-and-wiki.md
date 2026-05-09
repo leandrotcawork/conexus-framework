@@ -2,7 +2,7 @@
 
 > Audience: senior engineers + Claude working on **Conexus**.
 > Status: opinionated reference, 2026-05 snapshot.
-> Premise: Conexus has a **pluggable markdown wiki** (Phase 1: `LocalBackend` — plain filesystem per agent; Phase 2: `GitHubAppBackend` with remote sync). Ana and Pesquisador read/write notes via `WikiStore`. There are **no embeddings yet** — retrieval today is filename routing + full-file reads. This document covers what RAG is in 2026, what's worth adopting, and what to stay away from until we need it.
+> Premise: Conexus has a **pluggable markdown wiki** (Phase 1: `LocalBackend` — plain filesystem per agent, shipped 2026-05-08; Phase 2: `GitHubAppBackend` — GitHub App installation tokens + git subprocess sync, shipped 2026-05-08). Ana and Pesquisador read/write notes via `WikiStore`. There are **no embeddings yet** — retrieval today is filename routing + full-file reads. This document covers what RAG is in 2026, what's worth adopting, and what to stay away from until we need it.
 
 ---
 
@@ -141,9 +141,17 @@ For Conexus, the pragmatic stack is: **Obsidian as the human UI, git as transpor
 - `WikiBackend` Protocol (`src/conexus/core/memory/wiki/backend.py:8`) — `@runtime_checkable`, six methods (`read/write/list/search/exists/delete`). `safe_join(root, relpath)` (line 20) is the path-safety contract: rejects `..`, absolute paths, backslashes, and symlink escapes.
 - `LocalBackend` (`src/conexus/core/memory/wiki/local.py:9`) — plain filesystem impl. Auto-creates root dir. `list()` returns POSIX-relative paths. `search()` is substring grep with 120-char snippets. No auth, no network, no git.
 - `WikiStore` (`src/conexus/core/memory/wiki_store.py`) — thin facade. `__init__` accepts `WikiBackend | str | Path`; `str/Path` builds a `LocalBackend` (back-compat shim). `WikiStore.local(root)` is the preferred factory.
-- Backend is declared in SKILL.md: `identity.wiki.backend: local` (default) or `github_app` (Phase 2, raises `NotImplementedError` today — `src/conexus/cli/identity_runtime.py:53`).
+- Backend is declared in SKILL.md: `identity.wiki.backend: local` (default) or `github_app`.
 - Per-agent wiki directories live at `agents/<name>/wiki/` (excluded from git via `.gitignore` rule `agents/*/wiki/`).
-- `GitHubAppBackend` with remote sync is Phase 2. Phase 1 is local-only — no git commits happen during wiki writes.
+
+**Phase 2 Conexus wiki architecture (shipped 2026-05-08).** `GitHubAppBackend` with remote sync is live:
+
+- `git_auth.py` (`src/conexus/core/memory/wiki/git_auth.py`) — `_make_jwt(app_id, pem) -> str` builds a 9-minute RS256 JWT. `get_installation_token(app_id, pem, installation_id) -> str` wraps a module-level cache (`_TOKEN_CACHE: dict[int, tuple[str, float]]`) that evicts 5 minutes before expiry; on miss calls `POST https://api.github.com/app/installations/{id}/access_tokens` (sync `httpx`, 10 s timeout).
+- `GitHubAppBackend` (`src/conexus/core/memory/wiki/github_app.py`) — implements `WikiBackend`. Composes `LocalBackend` for file I/O. All git operations run via `subprocess.run` (sync; blocks event loop — MVP acceptable, `asyncio.to_thread` deferred). `_ensure_clone()` clones on first use; on empty-repo failure falls back to `git init` + `git remote add origin`. `_refresh_remote()` rotates the installation-token URL before every network op (tokens are short-lived). `read/list/search/write/delete` all call `_pull()` before delegating to `LocalBackend`; `write` and `delete` additionally call `_commit_push()`. `exists()` is local-only (no pull).
+- `github_app_installs` table in SQLite (`src/conexus/core/memory/sqlite_store.py:118`) — one row per agent: `(agent_id PK, repo_slug, installation_id, created_at)`. Helpers: `github_app_install_set/get/delete`.
+- OAuth install flow: `GET /admin/oauth/github/start?agent=&repo=` → GitHub App install page; `GET /admin/oauth/github/callback?installation_id=&state=` → writes to `github_app_installs`, redirects to agent detail. Router: `make_github_wiki_router(store)` in `src/conexus/web/admin/routes/github_wiki.py`, registered in `make_admin_app` (`web/admin/app.py:65`). State nonce stored in `oauth_pkce_state.code_verifier` with `gh:` prefix to isolate from Phase 11 PKCE rows.
+- `_build_wiki` in `src/conexus/cli/identity_runtime.py:45` dispatches the `github_app` branch: reads `github_app_install_get(agent_id)`, raises a human-readable `RuntimeError` if no row exists, reads `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY` from env, builds `GitHubAppBackend(local_root=skill_dir/"wiki", ...)`.
+- Known tech debt: `local_root=skill_dir/"wiki"` is inside the agent directory (not `/data`), which means wiki files do not survive Fly.io deploy image replacement. Needs to move to `data_dir/"wiki"` when deploying to Fly.
 
 ---
 

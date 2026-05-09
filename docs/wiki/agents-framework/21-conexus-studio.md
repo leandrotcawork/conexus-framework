@@ -699,3 +699,82 @@ allow_unsigned: bool = False
 > as HTMX `hx-post` buttons with no nested `<form>`, per commit d5abb6c), and
 > `AdminContext.allow_unsigned` / `CONEXUS_ALLOW_UNSIGNED` env wiring are all
 > present and wired through `make_admin_app`.
+
+---
+
+## 12. Phase E — GitHub Wiki Connect/Disconnect (Memory & Wiki Phase 2)
+
+Adds a GitHub App OAuth install flow and a Connect/Disconnect UI block to the
+agent detail page for agents whose wiki backend is `github_app`.
+
+### 12.1 New route module
+
+`src/conexus/web/admin/routes/github_wiki.py` — `make_github_wiki_router(store: SqliteStore) -> APIRouter`.
+Prefix: `/admin/oauth/github`. Two endpoints:
+
+| Method | Path | Action |
+|--------|------|--------|
+| `GET` | `/admin/oauth/github/start` | Writes `(nonce, "gh:{agent}:{repo}")` to `oauth_pkce_state`, redirects to `https://github.com/apps/{GITHUB_APP_SLUG}/installations/new?state={nonce}` |
+| `GET` | `/admin/oauth/github/callback` | Validates nonce + `gh:` prefix, extracts `agent`+`repo_slug`, calls `store.github_app_install_set(...)`, redirects to `/admin/agents/{agent}` |
+
+The `gh:` prefix on `code_verifier` isolates these rows from Phase 11 PKCE rows
+in the same `oauth_pkce_state` table. `GITHUB_APP_SLUG` is read from env at
+request time (not at factory time).
+
+`make_github_wiki_router` is registered in `make_admin_app` by passing a store
+opened against the Studio `data_dir` DB (`web/admin/app.py:63-65`):
+
+```python
+_store = _SqliteStore(str(data_dir / "conexus.db"))
+_store.init_db()
+app.include_router(make_github_wiki_router(_store))
+```
+
+### 12.2 Disconnect endpoint
+
+`POST /admin/agents/{name}/github-wiki/disconnect` is registered in
+`make_agents_router()` (`src/conexus/web/admin/routes/agents.py:95-101`).
+Opens a fresh `SqliteStore`, calls `store.github_app_install_delete(name)`,
+redirects `303` back to the agent detail page.
+
+### 12.3 Agent detail view changes
+
+`detail_view` (`routes/agents.py:61-83`) now calls
+`store.github_app_install_get(name)` and passes the result as `github_install`
+into the template context. `github_install` is `None` when no install row
+exists or `{"agent_id", "repo_slug", "installation_id", "created_at"}` when
+connected.
+
+### 12.4 Template — Connect/Disconnect block
+
+`src/conexus/web/admin/templates/agents/edit.html` (lines 31–57). The block
+renders only when `wiki_cfg.backend == "github_app"`:
+
+- **Connected state** (`github_install` truthy): shows repo slug (`font-mono`),
+  a green "Connected" badge, and a Disconnect `<form method="post">` button
+  posting to `/admin/agents/{name}/github-wiki/disconnect`.
+- **Disconnected state**: a `<form method="get" action="/admin/oauth/github/start">`
+  with a hidden `agent` field and a text `repo` input (`owner/repo` placeholder),
+  plus a "Connect" submit button.
+
+### 12.5 Required env vars
+
+| Variable | Purpose |
+|----------|---------|
+| `GITHUB_APP_ID` | App ID used to sign JWTs |
+| `GITHUB_APP_PRIVATE_KEY` | RS256 PEM — read at `_build_wiki` call time, not at import |
+| `GITHUB_APP_SLUG` | Used by `/start` to construct the GitHub install URL |
+
+### 12.6 Phase E scope and known gaps
+
+- No CSRF on the Disconnect POST (loopback trust inherited from Wave 0).
+- `local_root=skill_dir/"wiki"` in `_build_wiki` is not on the Fly.io volume;
+  wiki files will be lost on image replacement. Deferred.
+- `httpx.post` in `git_auth.py` is synchronous — called from the asyncio event
+  loop via the git subprocess path. Acceptable for single-user MVP.
+
+> Verdict: Phase E is verified in source — `make_github_wiki_router` (OAuth
+> flow, nonce isolation), Disconnect endpoint in `make_agents_router`,
+> `github_app_install_get` injected into template context, and the
+> Connect/Disconnect block in `edit.html` are all wired and registered through
+> `make_admin_app`.
