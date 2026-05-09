@@ -27,7 +27,7 @@ class IdentityRuntime:
         self.blocks = BlockStore(store)
         self.wiki: WikiStore | None = None
         if cfg.wiki:
-            self.wiki = _build_wiki(cfg.wiki, skill_dir)
+            self.wiki = _build_wiki(cfg.wiki, skill_dir, agent_id=agent_id, store=store)
         block_specs = {name: spec.budget_chars for name, spec in cfg.blocks.items()}
         # Seed initial block content if not yet present
         for name, spec in cfg.blocks.items():
@@ -42,7 +42,13 @@ class IdentityRuntime:
         )
 
 
-def _build_wiki(wiki_cfg: WikiSection, skill_dir: Path) -> WikiStore:
+def _build_wiki(
+    wiki_cfg: WikiSection,
+    skill_dir: Path,
+    *,
+    agent_id: str = "",
+    store: SqliteStore | None = None,
+) -> WikiStore:
     if wiki_cfg.backend == "local":
         wiki_path = (
             skill_dir / wiki_cfg.dir
@@ -51,9 +57,26 @@ def _build_wiki(wiki_cfg: WikiSection, skill_dir: Path) -> WikiStore:
         )
         return WikiStore.local(wiki_path)
     if wiki_cfg.backend == "github_app":
-        raise NotImplementedError(
-            "github_app backend lands in Phase 2 — use 'local' for now"
+        if store is None:
+            raise RuntimeError("store required for github_app wiki backend")
+        row = store.github_app_install_get(agent_id)
+        if row is None:
+            raise RuntimeError(
+                f"Agent '{agent_id}' github wiki not connected. "
+                "Go to Studio -> agent -> Connect GitHub Wiki first."
+            )
+        import os
+
+        from conexus.core.memory.wiki.github_app import GitHubAppBackend
+
+        backend = GitHubAppBackend(
+            local_root=skill_dir / "wiki",
+            repo_slug=row["repo_slug"],
+            installation_id=row["installation_id"],
+            app_id=os.environ["GITHUB_APP_ID"],
+            private_key_pem=os.environ["GITHUB_APP_PRIVATE_KEY"],
         )
+        return WikiStore(backend)
     raise ValueError(f"unknown wiki backend: {wiki_cfg.backend!r}")
 
 
