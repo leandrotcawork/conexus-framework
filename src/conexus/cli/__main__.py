@@ -297,6 +297,18 @@ def _handle_studio(args: argparse.Namespace) -> None:
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 
+def _handle_wiki_migrate(args: argparse.Namespace) -> None:
+    from conexus.cli.wiki_migrate import migrate_agent_wiki
+    from conexus.core.memory.sqlite_store import SqliteStore
+    from conexus.core.memory.wiki.local import LocalBackend
+
+    store = SqliteStore(f"{args.data_dir}/conexus.db")
+    store.init_db()
+    backend = LocalBackend(Path(args.agents_dir) / args.agent / "wiki")
+    res = migrate_agent_wiki(args.agent, backend, store)
+    print(res)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="conexus",
@@ -360,6 +372,14 @@ def _build_parser() -> argparse.ArgumentParser:
     studio_p.add_argument("--port", type=int, default=8765)
     studio_p.add_argument("--no-browser", action="store_true")
     studio_p.set_defaults(func=_handle_studio)
+
+    wiki_p = sub.add_parser("wiki", help="wiki maintenance")
+    wiki_sub = wiki_p.add_subparsers(dest="wiki_cmd")
+    mig = wiki_sub.add_parser("migrate", help="inject frontmatter + build FTS index")
+    mig.add_argument("--agent", required=True)
+    mig.add_argument("--data-dir", default="./data")
+    mig.add_argument("--agents-dir", default="./agents")
+    mig.set_defaults(func=_handle_wiki_migrate)
 
     return parser
 
