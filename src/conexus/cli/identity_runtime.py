@@ -7,6 +7,8 @@ from conexus.core.config.skill_loader import IdentitySection, WikiSection
 from conexus.core.identity.blocks import BlockStore
 from conexus.core.identity.tools import IdentityTools
 from conexus.core.memory.sqlite_store import SqliteStore
+from conexus.core.memory.wiki import LocalBackend
+from conexus.core.memory.wiki.index_sqlite import SqliteFtsIndex
 from conexus.core.memory.wiki_store import WikiStore
 
 
@@ -50,33 +52,31 @@ def _build_wiki(
     store: SqliteStore | None = None,
 ) -> WikiStore:
     if wiki_cfg.backend == "local":
-        wiki_path = (
-            skill_dir / wiki_cfg.dir
-            if not Path(wiki_cfg.dir).is_absolute()
-            else Path(wiki_cfg.dir)
-        )
-        return WikiStore.local(wiki_path)
+        backend = LocalBackend(skill_dir / wiki_cfg.dir)
+        idx = SqliteFtsIndex(store=store, agent_id=agent_id, backend=backend) if store and agent_id else None
+        return WikiStore(backend, index=idx)
     if wiki_cfg.backend == "github_app":
-        if store is None:
-            raise RuntimeError("store required for github_app wiki backend")
+        if store is None or not agent_id:
+            raise RuntimeError("github_app backend requires store + agent_id")
         row = store.github_app_install_get(agent_id)
         if row is None:
             raise RuntimeError(
                 f"Agent '{agent_id}' github wiki not connected. "
-                "Go to Studio -> agent -> Connect GitHub Wiki first."
+                "Visit /admin/oauth/github/start to install the app."
             )
         import os
 
         from conexus.core.memory.wiki.github_app import GitHubAppBackend
 
         backend = GitHubAppBackend(
-            local_root=skill_dir / "wiki",
+            local_root=skill_dir / wiki_cfg.dir,
             repo_slug=row["repo_slug"],
             installation_id=row["installation_id"],
             app_id=os.environ["GITHUB_APP_ID"],
             private_key_pem=os.environ["GITHUB_APP_PRIVATE_KEY"],
         )
-        return WikiStore(backend)
+        idx = SqliteFtsIndex(store=store, agent_id=agent_id, backend=backend)
+        return WikiStore(backend, index=idx)
     raise ValueError(f"unknown wiki backend: {wiki_cfg.backend!r}")
 
 
