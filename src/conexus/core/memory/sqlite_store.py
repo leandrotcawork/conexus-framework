@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -121,6 +122,49 @@ CREATE TABLE IF NOT EXISTS github_app_installs (
     installation_id INTEGER NOT NULL,
     created_at      TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS wiki_pages (
+    agent_id  TEXT NOT NULL,
+    path      TEXT NOT NULL,
+    mtime_ns  INTEGER NOT NULL,
+    created   TEXT,
+    updated   TEXT,
+    tags      TEXT,
+    source    TEXT,
+    reviewed  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (agent_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS wiki_chunks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id    TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    header_path TEXT NOT NULL,
+    line_start  INTEGER NOT NULL,
+    line_end    INTEGER NOT NULL,
+    body        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS wiki_chunks_path ON wiki_chunks(agent_id, path);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS wiki_chunks_fts USING fts5(
+    body,
+    content='wiki_chunks',
+    content_rowid='id',
+    tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS wiki_chunks_ai AFTER INSERT ON wiki_chunks BEGIN
+    INSERT INTO wiki_chunks_fts(rowid, body) VALUES (new.id, new.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS wiki_chunks_ad AFTER DELETE ON wiki_chunks BEGIN
+    INSERT INTO wiki_chunks_fts(wiki_chunks_fts, rowid, body) VALUES ('delete', old.id, old.body);
+END;
+
+CREATE TRIGGER IF NOT EXISTS wiki_chunks_au AFTER UPDATE ON wiki_chunks BEGIN
+    INSERT INTO wiki_chunks_fts(wiki_chunks_fts, rowid, body) VALUES ('delete', old.id, old.body);
+    INSERT INTO wiki_chunks_fts(rowid, body) VALUES (new.id, new.body);
+END;
 
 CREATE TABLE IF NOT EXISTS pack_migrations (
     pack_id     TEXT NOT NULL,
@@ -368,6 +412,146 @@ class SqliteStore:
                 (kind, ref_id, agent_name),
             ).fetchone()
             return row is not None and row["sent_at"] is not None
+
+    # ----- wiki index -----
+
+    def wiki_page_set(
+        self,
+        agent_id: str,
+        path: str,
+        *,
+        mtime_ns: int,
+        created: str | None,
+        updated: str | None,
+        tags: list[str],
+        source: str | None,
+        reviewed: bool,
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO wiki_pages (agent_id, path, mtime_ns, created, updated, tags, source, reviewed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(agent_id, path) DO UPDATE SET
+                    mtime_ns=excluded.mtime_ns,
+                    created=excluded.created,
+                    updated=excluded.updated,
+                    tags=excluded.tags,
+                    source=excluded.source,
+                    reviewed=excluded.reviewed
+                """,
+                (agent_id, path, mtime_ns, created, updated, json.dumps(tags), source, int(reviewed)),
+            )
+            conn.commit()
+
+    def wiki_page_get(self, agent_id: str, path: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT path, mtime_ns, created, updated, tags, source, reviewed
+                FROM wiki_pages
+                WHERE agent_id=? AND path=?
+                """,
+                (agent_id, path),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "path": row["path"],
+            "mtime_ns": row["mtime_ns"],
+            "created": row["created"],
+            "updated": row["updated"],
+            "tags": json.loads(row["tags"] or "[]"),
+            "source": row["source"],
+            "reviewed": bool(row["reviewed"]),
+        }
+
+    def wiki_page_list(self, agent_id: str) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT path, mtime_ns, created, updated, tags, source, reviewed
+                FROM wiki_pages
+                WHERE agent_id=?
+                ORDER BY path
+                """,
+                (agent_id,),
+            ).fetchall()
+        return [
+            {
+                "path": row["path"],
+                "mtime_ns": row["mtime_ns"],
+                "created": row["created"],
+                "updated": row["updated"],
+                "tags": json.loads(row["tags"] or "[]"),
+                "source": row["source"],
+                "reviewed": bool(row["reviewed"]),
+            }
+            for row in rows
+        ]
+
+    def wiki_page_delete(self, agent_id: str, path: str) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM wiki_chunks WHERE agent_id=? AND path=?", (agent_id, path))
+            conn.execute("DELETE FROM wiki_pages WHERE agent_id=? AND path=?", (agent_id, path))
+            conn.commit()
+
+    def wiki_chunks_clear(self, agent_id: str, path: str) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM wiki_chunks WHERE agent_id=? AND path=?", (agent_id, path))
+            conn.commit()
+
+    def wiki_chunk_insert(
+        self,
+        agent_id: str,
+        path: str,
+        *,
+        header_path: list[str],
+        line_start: int,
+        line_end: int,
+        body: str,
+    ) -> int:
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO wiki_chunks (agent_id, path, header_path, line_start, line_end, body)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (agent_id, path, json.dumps(header_path), line_start, line_end, body),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def wiki_fts_search(self, agent_id: str, query: str, k: int = 10) -> list[dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    wc.path,
+                    wc.header_path,
+                    wc.line_start,
+                    wc.line_end,
+                    snippet(wiki_chunks_fts, 0, '<mark>', '</mark>', '...', 32) AS snippet,
+                    bm25(wiki_chunks_fts) AS rank
+                FROM wiki_chunks_fts
+                JOIN wiki_chunks wc ON wc.id = wiki_chunks_fts.rowid
+                WHERE wiki_chunks_fts MATCH ? AND wc.agent_id = ?
+                ORDER BY rank
+                LIMIT ?
+                """,
+                (query, agent_id, k),
+            ).fetchall()
+        return [
+            {
+                "path": row["path"],
+                "header_path": json.loads(row["header_path"]),
+                "line_start": row["line_start"],
+                "line_end": row["line_end"],
+                "snippet": row["snippet"],
+                "score": float(row["rank"]),
+            }
+            for row in rows
+        ]
 
     # ----- pack migrations -----
 
