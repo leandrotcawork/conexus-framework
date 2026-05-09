@@ -7,7 +7,7 @@ from conexus.core.scheduler.scheduler import ConexusScheduler, rehydrate_reminde
 @pytest.mark.asyncio
 async def test_rehydrate_loads_active_jobs(tmp_path: Path):
     repo_root = Path(__file__).parents[3]
-    store = SqliteStore(tmp_path / "db.sqlite")
+    store = SqliteStore(":memory:")
     store.init_db()
     store.apply_pack_migrations("reminders", repo_root / "packs" / "reminders" / "migrations")
     with store.connect() as conn:

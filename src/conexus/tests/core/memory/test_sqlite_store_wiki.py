@@ -4,7 +4,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _store(tmp_path: Path) -> SqliteStore:
-    s = SqliteStore(str(tmp_path / "test.db"))
+    s = SqliteStore(":memory:")
     s.init_db()
     return s
 

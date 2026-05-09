@@ -26,7 +26,7 @@ def _make_app(store: SqliteStore, tmp_path: Path) -> FastAPI:
 
 @pytest.fixture
 def store(tmp_path: Path) -> SqliteStore:
-    s = SqliteStore(str(tmp_path / "test.db"))
+    s = SqliteStore(":memory:")
     s.init_db()
     return s
 

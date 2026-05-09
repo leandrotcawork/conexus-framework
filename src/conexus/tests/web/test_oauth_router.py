@@ -8,7 +8,7 @@ from conexus.web.app import make_app
 
 
 def test_start_redirects_to_authorize(tmp_path, httpx_mock):
-    store = SqliteStore(str(tmp_path / "w.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     state_secret = b"s" * 32
     app = make_app(

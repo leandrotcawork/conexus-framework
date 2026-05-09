@@ -7,7 +7,7 @@ from conexus.core.skills.skill_resolver import SkillLoader
 
 def test_loader_registers_reminders_and_notes(tmp_path: Path):
     repo_root = Path(__file__).parents[3]
-    store = SqliteStore(tmp_path / "db.sqlite")
+    store = SqliteStore(":memory:")
     store.init_db()
     for pack in ("reminders", "notes"):
         store.apply_pack_migrations(pack, repo_root / "packs" / pack / "migrations")

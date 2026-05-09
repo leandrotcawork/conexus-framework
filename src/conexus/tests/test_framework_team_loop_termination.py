@@ -28,7 +28,7 @@ def test_team_policy_rejects_zero_max_parallel():
 @pytest.mark.asyncio
 async def test_termination_text_ends_loop(tmp_path, team_fixture):
     """If starter emits text containing policy.termination_text, loop returns it as final."""
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
 
     async def exec_tool(name, args):
         return "{}"

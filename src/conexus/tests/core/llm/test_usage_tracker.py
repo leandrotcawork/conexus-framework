@@ -5,7 +5,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def test_recent_returns_rows_after_direct_insert(tmp_path):
-    store = SqliteStore(str(tmp_path / "t.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     with store.connect() as conn:
         conn.execute(

@@ -29,6 +29,7 @@ def servers():
     yield _register_token
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_full_flow_no_auth_then_callback_then_call(tmp_path, servers):
     register_token = servers

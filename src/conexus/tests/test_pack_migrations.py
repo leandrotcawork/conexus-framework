@@ -3,7 +3,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def test_apply_migrations_creates_table(tmp_path: Path):
-    store = SqliteStore(tmp_path / "db.sqlite")
+    store = SqliteStore(":memory:")
     store.init_db()
     sql_dir = tmp_path / "sql"
     sql_dir.mkdir()
@@ -17,7 +17,7 @@ def test_apply_migrations_creates_table(tmp_path: Path):
 
 
 def test_apply_migrations_idempotent(tmp_path: Path):
-    store = SqliteStore(tmp_path / "db.sqlite")
+    store = SqliteStore(":memory:")
     store.init_db()
     sql_dir = tmp_path / "sql"
     sql_dir.mkdir()

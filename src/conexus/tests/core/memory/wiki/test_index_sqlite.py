@@ -6,7 +6,7 @@ from conexus.core.memory.wiki.local import LocalBackend
 
 
 def _setup(tmp_path: Path):
-    store = SqliteStore(str(tmp_path / "t.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     backend = LocalBackend(tmp_path / "wiki")
     idx = SqliteFtsIndex(store=store, agent_id="a1", backend=backend)

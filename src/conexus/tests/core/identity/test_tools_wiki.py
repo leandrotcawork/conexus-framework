@@ -8,7 +8,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _make_tools(tmp_path):
-    store = SqliteStore(str(tmp_path / "id.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     blocks = BlockStore(store)
     return IdentityTools(

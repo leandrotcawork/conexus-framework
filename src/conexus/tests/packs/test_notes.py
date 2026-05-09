@@ -7,7 +7,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 @pytest.fixture
 def notes(tmp_path):
     repo_root = Path(__file__).parents[4]
-    store = SqliteStore(tmp_path / "db.sqlite")
+    store = SqliteStore(":memory:")
     store.init_db()
     store.apply_pack_migrations("notes", repo_root / "packs" / "notes" / "migrations")
     p = repo_root / "packs" / "notes" / "tools.py"

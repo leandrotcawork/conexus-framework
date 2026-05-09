@@ -7,7 +7,7 @@ from conexus.core.memory.wiki_store import WikiStore
 
 
 def _make(tmp_path: Path) -> WikiStore:
-    store = SqliteStore(str(tmp_path / "t.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     backend = LocalBackend(tmp_path / "wiki")
     idx = SqliteFtsIndex(store=store, agent_id="a", backend=backend)

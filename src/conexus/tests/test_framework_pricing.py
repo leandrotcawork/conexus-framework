@@ -6,8 +6,9 @@ from conexus.core.llm.catalog import llm_options
 from conexus.core.llm.cost import cost_from_response
 
 
-def test_llm_options_has_providers():
-    options = llm_options()
+def test_llm_options_has_providers(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    options = llm_options(configured_only=True)
     assert isinstance(options, dict)
     assert len(options) > 0
     # At least one provider should be available (test environment sets DEEPSEEK_API_KEY)
@@ -16,8 +17,9 @@ def test_llm_options_has_providers():
         assert len(provider_models) > 0
 
 
-def test_llm_options_models_are_strings():
-    options = llm_options()
+def test_llm_options_models_are_strings(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    options = llm_options(configured_only=True)
     for provider, models in options.items():
         assert isinstance(models, list)
         assert all(isinstance(m, str) for m in models)
@@ -26,7 +28,7 @@ def test_llm_options_models_are_strings():
 
 def test_llm_options_no_excluded_keywords():
     excluded = ("audio", "realtime", "tts", "embedding", "image", "vision", "video")
-    options = llm_options()
+    options = llm_options(configured_only=True)
     for provider, models in options.items():
         for model in models:
             lower = model.lower()

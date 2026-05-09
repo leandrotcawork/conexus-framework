@@ -7,7 +7,7 @@ from conexus.core.memory.wiki.index import WikiIndex
 
 
 def test_build_wiki_local_attaches_index(tmp_path):
-    store = SqliteStore(str(tmp_path / "t.db")); store.init_db()
+    store = SqliteStore(":memory:"); store.init_db()
     skill_dir = tmp_path / "agent"
     skill_dir.mkdir()
     cfg = WikiSection(backend="local", dir="wiki", inject_index=False)
@@ -17,7 +17,7 @@ def test_build_wiki_local_attaches_index(tmp_path):
 
 
 def test_build_wiki_search_works_round_trip(tmp_path):
-    store = SqliteStore(str(tmp_path / "t.db")); store.init_db()
+    store = SqliteStore(":memory:"); store.init_db()
     skill_dir = tmp_path / "agent"
     skill_dir.mkdir()
     cfg = WikiSection(backend="local", dir="wiki", inject_index=False)

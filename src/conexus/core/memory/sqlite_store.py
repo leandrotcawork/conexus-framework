@@ -204,12 +204,21 @@ def _migrate_facts_v1_to_v2(conn: sqlite3.Connection) -> None:
 
 class SqliteStore:
     def __init__(self, db_path: str | Path):
-        self.db_path = Path(db_path)
+        if str(db_path) == ":memory:":
+            self.db_path: Path | str = ":memory:"
+            self._mem_conn: sqlite3.Connection | None = sqlite3.connect(
+                ":memory:", check_same_thread=False
+            )
+            self._mem_conn.row_factory = sqlite3.Row
+        else:
+            self.db_path = Path(db_path)
+            self._mem_conn = None
 
     def init_db(self) -> None:
         from conexus.core.memory.handoff_audit import init_handoff_audit
         from conexus.core.memory.tool_audit import init_tool_audit
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(self.db_path, Path):
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             _migrate_facts_v1_to_v2(conn)
             conn.executescript(SCHEMA)
@@ -224,12 +233,17 @@ class SqliteStore:
         Intended for audit queries in tests and for long-lived operations like
         handle_team_message that need a single connection across multiple writes.
         """
+        if self._mem_conn is not None:
+            return self._mem_conn
         c = sqlite3.connect(self.db_path)
         c.row_factory = sqlite3.Row
         return c
 
     @contextmanager
     def connect(self):
+        if self._mem_conn is not None:
+            yield self._mem_conn
+            return
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         try:
@@ -270,7 +284,7 @@ class SqliteStore:
         with self.connect() as conn:
             rows = conn.execute(
                 """SELECT key, value, updated_at FROM facts
-                   WHERE agent_id=? ORDER BY updated_at DESC LIMIT ?""",
+                   WHERE agent_id=? ORDER BY updated_at DESC, rowid DESC LIMIT ?""",
                 (agent_id, limit),
             ).fetchall()
             return [dict(r) for r in rows]

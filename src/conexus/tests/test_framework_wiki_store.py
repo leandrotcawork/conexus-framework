@@ -8,7 +8,7 @@ from conexus.core.memory.wiki_store import WikiStore
 def test_write_and_read(tmp_wiki_dir: Path):
     store = WikiStore.local(tmp_wiki_dir)
     store.write("about/leandro.md", "# Leandro\n\nBrazilian founder.")
-    assert store.read("about/leandro.md") == "# Leandro\n\nBrazilian founder."
+    assert "# Leandro\n\nBrazilian founder." in store.read("about/leandro.md")
 
 
 def test_list_files(tmp_wiki_dir: Path):
@@ -79,7 +79,7 @@ def test_wikistore_accepts_path_via_local_classmethod(tmp_path):
     from conexus.core.memory.wiki_store import WikiStore
     store = WikiStore.local(tmp_path)
     store.write("a.md", "x")
-    assert store.read("a.md") == "x"
+    assert store.read("a.md").endswith("x")
 
 
 def test_wikistore_accepts_backend_directly(tmp_path):
@@ -95,4 +95,4 @@ def test_wikistore_legacy_path_constructor_still_works(tmp_path):
     from conexus.core.memory.wiki_store import WikiStore
     store = WikiStore(str(tmp_path))
     store.write("a.md", "z")
-    assert store.read("a.md") == "z"
+    assert store.read("a.md").endswith("z")

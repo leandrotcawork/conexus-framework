@@ -8,7 +8,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 
 def _store(tmp_path: Path) -> SqliteStore:
-    s = SqliteStore(str(tmp_path / "db.sqlite"))
+    s = SqliteStore(":memory:")
     s.init_db()
     return s
 
@@ -33,7 +33,7 @@ def test_github_app_backend_builds_from_store(tmp_path):
     from conexus.core.config.skill_loader import WikiSection
     from conexus.core.memory.sqlite_store import SqliteStore
 
-    store = SqliteStore(str(tmp_path / "test.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     store.github_app_install_set("myagent", "owner/repo", 99)
 
@@ -53,7 +53,7 @@ def test_github_app_backend_missing_install_raises(tmp_path):
     from conexus.core.config.skill_loader import WikiSection
     from conexus.core.memory.sqlite_store import SqliteStore
 
-    store = SqliteStore(str(tmp_path / "test.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     wiki_cfg = WikiSection(backend="github_app", repo="owner/repo")
 

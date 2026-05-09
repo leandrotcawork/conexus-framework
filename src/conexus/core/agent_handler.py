@@ -272,9 +272,9 @@ async def handle_team_message(
     if session_id is None:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
 
-    registry = TeamRegistry(team)
+    registry = team if isinstance(team, TeamRegistry) else TeamRegistry(team)
     store.init_db()
-    audit_conn: sqlite3.Connection = sqlite3.connect(store.db_path)
+    audit_conn: sqlite3.Connection = store.conn
     try:
         router = HandoffRouter(registry, conn=audit_conn, session_id=session_id)
         policy = registry.policy
@@ -474,4 +474,5 @@ async def handle_team_message(
         store.chat_append(starter, "assistant", last_reply)
         return last_reply
     finally:
-        audit_conn.close()
+        if audit_conn is not getattr(store, "_mem_conn", None):
+            audit_conn.close()

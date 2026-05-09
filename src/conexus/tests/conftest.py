@@ -33,9 +33,9 @@ def studio_client(tmp_path: Path) -> TestClient:
 
 
 @pytest.fixture
-def tmp_db_path(tmp_path: Path) -> Path:
-    """Pytest-tmp-path-based SQLite file. Destroyed after test."""
-    return tmp_path / "conexus_test.db"
+def tmp_db_path() -> str:
+    """In-memory SQLite — fast, isolated per test."""
+    return ":memory:"
 
 
 @pytest.fixture

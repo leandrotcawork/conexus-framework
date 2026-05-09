@@ -13,7 +13,7 @@ from conexus.core.memory.wiki_store import WikiStore
 
 @pytest.fixture
 def deps(tmp_path):
-    store = SqliteStore(str(tmp_path / "id.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     wiki = WikiStore.local(tmp_path / "wiki")
     blocks = BlockStore(store)

@@ -25,7 +25,7 @@ def _make_store(tmp_path: Path):
 
     if SqliteStore is not None and SqliteFtsIndex is not None:
         try:
-            sqlite = SqliteStore(str(tmp_path / "wiki.db"))
+            sqlite = SqliteStore(":memory:")
             sqlite.init_db()
             return _WikiStore(backend, index=SqliteFtsIndex(store=sqlite, agent_id="a", backend=backend))
         except TypeError:
