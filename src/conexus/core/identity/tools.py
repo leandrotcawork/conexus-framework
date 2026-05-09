@@ -95,3 +95,23 @@ class IdentityTools:
     def wiki_append_log(self, kind: str, title: str, body: str = "") -> dict:
         self._require_wiki().append_log(kind, title, body)
         return {"ok": True}
+
+    def wiki_delete(self, path: str) -> dict:
+        self._require_wiki().delete(path)
+        return {"deleted": path}
+
+    def wiki_exists(self, path: str) -> bool:
+        return self._require_wiki().exists(path)
+
+    def wiki_move(self, src: str, dst: str) -> dict:
+        self._require_wiki().move(src, dst)
+        return {"moved": src, "to": dst}
+
+    def wiki_lint(self) -> dict:
+        report = self._require_wiki().lint()
+        dead_links = [list(link) for link in report.dead_links]
+        return {"dead_links": dead_links, "warnings": report.warnings}
+
+    def wiki_index_update(self, path: str, summary: str) -> dict:
+        self._require_wiki().index_update(path, summary)
+        return {"indexed": path}
