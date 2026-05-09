@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from conexus.core.llm.catalog import configured_providers, llm_options
+from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.packs.installer import InstallError, _safe_name
 from conexus.core.packs.registry import PacksRegistry
 from ..services.agent_repo import list_agents, read_agent
@@ -57,6 +58,9 @@ def make_agents_router() -> APIRouter:
             agent = read_agent(ctx.agents_dir, name)
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
+        _store = SqliteStore(str(ctx.data_dir / "conexus.db"))
+        _store.init_db()
+        github_install = _store.github_app_install_get(name)
         from conexus.web.admin.services.capability_view import build_capability_view
         fm = agent.skill.frontmatter
         capability = build_capability_view(
@@ -76,6 +80,7 @@ def make_agents_router() -> APIRouter:
                 "fm": fm,
                 "body": agent.skill.body,
                 "capability": capability,
+                "github_install": github_install,
                 "readonly": True,
                 "raw_skill_md": agent.skill_path.read_text(encoding="utf-8"),
                 "llm_options": llm_options(configured_only=False),
@@ -87,6 +92,14 @@ def make_agents_router() -> APIRouter:
         )
 
     # ── save ──────────────────────────────────────────────────────────────────
+    @router.post("/agents/{name}/github-wiki/disconnect")
+    async def github_wiki_disconnect(request: Request, name: str) -> RedirectResponse:
+        ctx = request.app.state.ctx
+        store = SqliteStore(str(ctx.data_dir / "conexus.db"))
+        store.init_db()
+        store.github_app_install_delete(name)
+        return RedirectResponse(f"/admin/agents/{name}", status_code=303)
+
     @router.post("/agents/{name}", response_class=HTMLResponse)
     async def save(
         request: Request,

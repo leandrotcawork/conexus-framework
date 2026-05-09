@@ -28,6 +28,38 @@
         </form>
       </div>
 
+      {% set wiki_cfg = fm.identity.wiki if fm.identity else none %}
+      {% if wiki_cfg and wiki_cfg.backend == "github_app" %}
+      <div class="card p-4 mt-4">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <h3 class="text-sm font-semibold text-slate-700">GitHub Wiki</h3>
+          {% if github_install %}
+          <span class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono">Connected</span>
+          {% else %}
+          <span class="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-mono">Not connected</span>
+          {% endif %}
+        </div>
+
+        {% if github_install %}
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-medium text-slate-500 uppercase tracking-wide">Repository</div>
+            <div class="text-sm text-slate-800 font-mono">{{ github_install.repo_slug }}</div>
+          </div>
+          <form method="post" action="/admin/agents/{{ agent.name }}/github-wiki/disconnect">
+            <button type="submit" class="btn-secondary text-sm px-3">Disconnect</button>
+          </form>
+        </div>
+        {% else %}
+        <form method="get" action="/admin/oauth/github/start" class="flex flex-col sm:flex-row gap-2">
+          <input type="hidden" name="agent" value="{{ agent.name }}">
+          <input name="repo" required placeholder="owner/repo" class="input flex-1 text-sm" autocomplete="off">
+          <button type="submit" class="btn-primary text-sm px-3">Connect</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- REPL panel -->
       <div class="card p-4 mt-4">
         <div class="flex items-center justify-between mb-3">
