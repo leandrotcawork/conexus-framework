@@ -1,42 +1,37 @@
 # Last Session — Conexus
-> Date: 2026-05-08 | Session: #9
+> Date: 2026-05-09 | Session: #11
 
 ## What Was Accomplished
-- Spec written: `docs/superpowers/specs/2026-05-08-memory-and-wiki-architecture-design.md` (7 decisions, Phase split, GitHub App deferred)
-- Plan written + codex-validated (2 NO-GO passes fixed, final APPROVE): `docs/superpowers/plans/2026-05-08-memory-and-wiki-phase1.md`
-- Task 1: WikiBackend Protocol + safe_join (ea62282)
-- Task 2: LocalBackend filesystem impl (ed6cca7)
-- Task 3: WikiStore refactored to facade over WikiBackend — git+SSH logic dropped (a3ac340)
-- Task 4: SKILL.md schema — `wiki.backend`, `wiki.dir`, `prompt_override`; `IdentitySection.wiki` default=WikiSection() (ecd5037)
-- Task 5: IdentityRuntime dispatches on `cfg.wiki.backend` via `_build_wiki()`; stores `skill_dir` (bc0d15b)
-- Task 6: `DEFAULT_MEMORY_PROMPT_PT_BR` + `load_memory_prompt()` (dcc6897)
-- Task 7: `assemble_identity_context` prepends memory-routing prompt; `agent_handler.py` passes `ir.skill_dir` (19bd10f)
-- Task 8: notes-pack `add_note` description warns against identity facts, redirects to `memory_set`/`wiki_write` (a5a1542)
-- Task 9: validator SKILL.md gets `identity.wiki: {backend: local}` (0637857)
-- Task 10: `.gitignore agents/*/wiki/` (16bb35f)
-- Fix: `load_memory_prompt` raises explicit FileNotFoundError for bad `prompt_override` path (a0e5e77)
-- Fix: `test_identity_section_minimal` assertion updated for new default-local wiki (61d24d5)
-- Opus phase review: SHIP verdict, no blockers
-- wiki-keeper: updated 04-memory-systems, 05-skills-prompts, 07-rag-and-wiki (7c5d097)
-- 64 Phase 1 tests pass, 1 skipped (Windows symlink), 12 commits
+- Codex pre-validated Phase 2 plan (3 rounds: 3 blockers fixed then APPROVE)
+- Dispatched T1+T2 in parallel (JWT auth + DB schema)
+- Dispatched T3+T4 in parallel (GitHubAppBackend + OAuth callback route)
+- Dispatched T5+T6 in parallel (identity_runtime wire + Studio UI)
+- Fixed 2 bugs found during T3 execution: README seeding removed from _ensure_clone, delete() reordered to pull-before-check
+- Opus review: SHIP — applied post-review fix (delete() order + test mock scope)
+- wiki-keeper updated 4 partitions (00-index, 04-memory, 07-rag-wiki, 21-studio)
+- Phase 2 complete: 7 commits, 24 tests green, ruff clean
 
 ## What Changed in the System
-- New package: `src/conexus/core/memory/wiki/` (`__init__`, `backend.py`, `local.py`)
-- New module: `src/conexus/core/identity/prompt.py`
-- Modified: `wiki_store.py` (191→60 lines, pure facade, no git), `identity_runtime.py` (backend dispatch + skill_dir), `context.py` (prompt prepend + skill_dir param), `agent_handler.py` (passes ir.skill_dir), `skill_loader.py` (backend + prompt_override), `packs/notes/tools.py` (descriptions)
-- New tests: `tests/core/memory/wiki/`, `tests/core/identity/test_prompt.py`, `tests/cli/test_identity_runtime_backends.py`, `tests/packs/test_notes_descriptions.py`
+- New: `src/conexus/core/memory/wiki/git_auth.py` — JWT + installation token cache
+- New: `src/conexus/core/memory/wiki/github_app.py` — GitHubAppBackend (WikiBackend impl)
+- New: `src/conexus/web/admin/routes/github_wiki.py` — OAuth install callback routes
+- Modified: `src/conexus/core/memory/wiki/__init__.py` — exports GitHubAppBackend
+- Modified: `src/conexus/core/memory/sqlite_store.py` — github_app_installs table + 3 helpers
+- Modified: `src/conexus/cli/identity_runtime.py` — _build_wiki signature + github_app branch
+- Modified: `src/conexus/web/admin/routes/agents.py` — github_install context + disconnect endpoint
+- Modified: `src/conexus/web/admin/templates/agents/edit.html` — Connect/Disconnect section
 
 ## Decisions Made This Session
-- WikiBackend Protocol: pluggable backends; Phase 1 = LocalBackend only; Phase 2 = GitHubAppBackend (per-agent repo, GitHub App auth)
-- SSH backend dropped entirely — no git in Phase 1 WikiStore
-- IdentitySection.wiki defaults to WikiSection() (not None) — backward compat for Anna
-- Memory-routing prompt auto-prepended to ALL identity contexts when enabled
+- gh: prefix isolation in oauth_pkce_state.code_verifier (reuses Phase 11 table safely)
+- delete() pulls before checking existence (remote-only files are deletable after pull)
+- local_root=skill_dir/"wiki" for GitHubAppBackend (Fly.io volume concern deferred)
 
 ## What's Immediately Next
-- T-045: Migrate Ana to identity baseline (add `identity:` block to agents/ana/SKILL.md)
-- Phase 2 (deferred): GitHub App registration + GitHubAppBackend + OAuth callback in Studio
-- Manual E2E REPL test: start Studio, send 3 messages to validator, verify facts/wiki/notes land in right stores
+- Phase 10 is now complete (all tasks done including T-063 Phase1 + Phase2 implied by T-063 notes)
+- T-045 (Ana identity migration) was permanently skipped by user
+- No active phase — user to decide next priority
 
 ## Open Questions
-- Telegram `on_auth_required` factory not wired into actual bot handler yet
-- Google Calendar MCP server_url still placeholder
+- Fly.io: local_root=skill_dir/"wiki" may need to move to data_dir for volume persistence
+- git subprocess blocks event loop — asyncio.to_thread deferred to future phase
+- Telegram on_auth_required factory still not wired into actual bot handler
