@@ -115,6 +115,13 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
   registered_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS github_app_installs (
+    agent_id        TEXT PRIMARY KEY,
+    repo_slug       TEXT NOT NULL,
+    installation_id INTEGER NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS pack_migrations (
     pack_id     TEXT NOT NULL,
     version     TEXT NOT NULL,
@@ -385,3 +392,36 @@ class SqliteStore:
                     (pack_id, version, _now_iso()),
                 )
                 conn.commit()
+
+    # ----- github app installs -----
+
+    def github_app_install_set(
+        self, agent_id: str, repo_slug: str, installation_id: int
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO github_app_installs (agent_id, repo_slug, installation_id, created_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(agent_id) DO UPDATE SET
+                     repo_slug=excluded.repo_slug,
+                     installation_id=excluded.installation_id,
+                     created_at=excluded.created_at""",
+                (agent_id, repo_slug, installation_id, _now_iso()),
+            )
+            conn.commit()
+
+    def github_app_install_get(self, agent_id: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT agent_id, repo_slug, installation_id, created_at"
+                " FROM github_app_installs WHERE agent_id=?",
+                (agent_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def github_app_install_delete(self, agent_id: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM github_app_installs WHERE agent_id=?", (agent_id,)
+            )
+            conn.commit()
