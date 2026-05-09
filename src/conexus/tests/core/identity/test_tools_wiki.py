@@ -25,7 +25,7 @@ def test_wiki_delete_returns_deleted_bool(tmp_path, monkeypatch):
     wiki = Mock()
     monkeypatch.setattr(tools, "_require_wiki", lambda: wiki)
 
-    assert tools.wiki_delete(path="notes/a.md") == {"deleted": True}
+    assert tools.wiki_delete(path="notes/a.md") == {"ok": True, "deleted": True}
     wiki.delete.assert_called_once_with("notes/a.md")
 
 
@@ -46,7 +46,7 @@ def test_wiki_move_returns_mapping_with_backlinks(tmp_path, monkeypatch):
     monkeypatch.setattr(tools, "_require_wiki", lambda: wiki)
 
     result = tools.wiki_move(src="a.md", dst="archive/a.md")
-    assert result == {"moved": "a.md", "to": "archive/a.md", "backlinks_updated": 3}
+    assert result == {"ok": True, "moved": "a.md", "to": "archive/a.md", "backlinks_updated": 3}
     wiki.move.assert_called_once_with("a.md", "archive/a.md")
 
 

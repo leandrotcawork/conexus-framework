@@ -56,7 +56,9 @@ def test_block_set_unknown_block_rejected(deps):
 def test_wiki_write_read(deps, tmp_path):
     tools, _, _, _ = deps
     tools.wiki_write(path="about.md", content="# About\nLeandro builds Conexus.")
-    assert "Leandro builds Conexus" in tools.wiki_read(path="about.md")
+    result = tools.wiki_read(path="about.md")
+    assert result["ok"] is True
+    assert "Leandro builds Conexus" in result["content"]
 
 
 def test_wiki_list(deps):
