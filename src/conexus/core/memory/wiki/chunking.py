@@ -5,17 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-try:
-    from .frontmatter import parse
-except ImportError:  # TODO: Remove this fallback once Task 1 frontmatter.py lands.
-    def parse(text: str) -> tuple[dict, str]:
-        if not text.startswith("---\n"):
-            return {}, text
-        end = text.find("\n---\n", 4)
-        if end == -1:
-            return {}, text
-        body = text[end + len("\n---\n") :]
-        return {}, body
+from .frontmatter import parse
 
 
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+)$")

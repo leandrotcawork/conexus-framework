@@ -5,7 +5,7 @@ import re
 
 _SLUG_NORMALIZE = re.compile(r"[^\w\s-]+", re.UNICODE)
 _SLUG_SPACES = re.compile(r"[\s-]+")
-_CITATION_RE = re.compile(r"\[([^\[\]\s()]+\.md)(?:#([a-z0-9-]+))?\]")
+_CITATION_RE = re.compile(r"\[([^\[\]\s()]+\.md)(?:#([\w-]+))?\]", re.UNICODE)
 
 
 def slug_anchor(heading: str) -> str:
