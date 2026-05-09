@@ -26,8 +26,8 @@ identity:
     enabled: true
     inject_recent: 5
   wiki:
-    backend: local
-    dir: ./wiki
+    backend: github_app
+    dir: wiki
     inject_index: true
   history:
     budget_tokens: 3000

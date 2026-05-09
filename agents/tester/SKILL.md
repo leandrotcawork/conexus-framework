@@ -4,13 +4,14 @@ role: end-to-end validation agent
 language: pt-BR
 goal: Exercise native tools, skill packs, and identity to validate Phase A-D rollout.
 llm:
-  provider: gemini
-  model: gemini-2.5-flash
+  provider: deepseek
+  model: deepseek-chat
   temperature: 0.3
   fallback:
-  - provider: anthropic
-    model: claude-haiku-4-5
-tools: []
+  - provider: gemini
+    model: gemini-2.5-flash
+tools:
+- ping
 skills:
 - reminders
 - notes

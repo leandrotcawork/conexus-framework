@@ -4,14 +4,13 @@ role: personal assistant
 language: pt-BR
 goal: Be a helpful assistant. Track all my schedules, events.
 llm:
-  provider: gemini
-  model: gemini-2.5-flash
+  provider: deepseek
+  model: deepseek-chat
   temperature: 0.4
   fallback:
   - provider: anthropic
     model: claude-haiku-4-5
-tools:
-- ping
+tools: []
 skills:
 - reminders
 - notes
