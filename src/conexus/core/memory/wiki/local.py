@@ -25,6 +25,7 @@ class LocalBackend:
         p.write_text(content, encoding="utf-8")
 
     def list(self, folder: str = "") -> list[str]:
+        folder = folder.strip("/\\") if folder else ""
         base = safe_join(self.root, folder) if folder else self.root
         if not base.exists():
             return []
