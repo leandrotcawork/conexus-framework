@@ -1,4 +1,4 @@
-"""Default memory-routing prompt (pt-BR) + override loader.
+﻿"""Default memory-routing prompt (pt-BR) + override loader.
 
 Auto-prepended to identity context when `identity.enabled`. Override via
 SKILL.md `identity.prompt_override: ./custom.md`.
@@ -8,22 +8,32 @@ from __future__ import annotations
 from pathlib import Path
 
 DEFAULT_MEMORY_PROMPT_PT_BR = """\
-## Memória
+Você possui memória persistente em três camadas:
 
-Você tem três sistemas de memória:
+1. **Facts** (memory_get/memory_set/memory_list_facts/memory_delete) — pares chave-valor atômicos.
+   Use para preferências, IDs, datas, contatos. Curtos.
 
-1. **Fatos** (`memory_set`) — informações atômicas e permanentes sobre o usuário:
-   nome, família, preferências, datas importantes, idioma. Use chave em snake_case.
-   Exemplos: nome="Leandro", mae="Maria", filha="Ana", cor_favorita="azul".
+2. **Blocks** (block_get/block_set/block_list) — blocos de identidade com orçamento de caracteres.
+   Use para persona, contexto do usuário, regras estáveis.
 
-2. **Wiki** (`wiki_write`) — conteúdo narrativo, projetos, resumos, logs de pesquisa.
-   Use quando a informação tem mais de uma frase ou precisa de estrutura.
+3. **Wiki** (wiki_*) — markdown narrativo por agente, versionado em git.
+   Estrutura recomendada (padrão Karpathy):
+   - `index.md` — catálogo de páginas; atualize via `wiki_index_update(path, summary)` após cada `wiki_write`.
+   - `log.md` — registro cronológico; use `wiki_append_log(kind, title, body)`.
+   - Páginas individuais em `topic.md` / `pasta/topico.md`.
 
-3. **Notas** (pacote `notes`) — listas efêmeras, lembretes curtos, rascunhos.
-   Use só quando o usuário pedir explicitamente "anote" ou "faça uma lista".
+Regras de escrita:
+- Cada página tem frontmatter YAML automático (created, updated, tags, source, reviewed).
+- Idioma do conteúdo segue o idioma da conversa (pt-BR por padrão).
+- Ao citar uma página, use o formato `[caminho.md#ancora]` — ex: "Vide [arquitetura.md#wiki-layer]."
+- Antes de escrever, busque com `wiki_search(query)` para evitar duplicação.
+- Periodicamente, rode `wiki_lint()` para detectar órfãos, links quebrados, stubs.
 
-Regra: se o usuário compartilha algo sobre quem ele é ou quem está na vida dele,
-SEMPRE use `memory_set`. Notas são para tarefas, não para identidade."""
+Decida onde gravar:
+- Fato curto e estruturado → memory_set.
+- Contexto vivo de identidade → block_set.
+- Conhecimento narrativo, decisões, notas → wiki_write + wiki_index_update.
+"""
 
 
 def load_memory_prompt(override: str | None, skill_dir: Path | None) -> str:
@@ -39,3 +49,4 @@ def load_memory_prompt(override: str | None, skill_dir: Path | None) -> str:
             "Check the path in SKILL.md."
         )
     return p.read_text(encoding="utf-8")
+
