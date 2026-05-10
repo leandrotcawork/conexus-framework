@@ -1,5 +1,6 @@
+import enum
 import inspect
-from typing import Any, get_args, get_origin, get_type_hints
+from typing import Any, Literal, get_args, get_origin, get_type_hints
 
 
 def _is_optional(annotation: Any) -> bool:
@@ -30,12 +31,29 @@ def _type_to_schema(annotation: Any) -> dict:
     if annotation is float:
         return {"type": "number"}
 
-    if origin in (list,):
+    if origin is list:
         args = get_args(annotation)
         item_type = args[0] if args else Any
         return {"type": "array", "items": _type_to_schema(item_type)}
 
-    return {"type": "string"}
+    if origin is Literal:
+        return {"type": "string", "enum": [str(v) for v in get_args(annotation)]}
+
+    if isinstance(annotation, type) and issubclass(annotation, enum.Enum):
+        return {"type": "string", "enum": [m.value for m in annotation]}
+
+    if origin is dict:
+        args = get_args(annotation)
+        value_type = args[1] if len(args) >= 2 else Any
+        return {
+            "type": "object",
+            "additionalProperties": {} if value_type is Any else _type_to_schema(value_type),
+        }
+
+    if annotation is Any:
+        return {}
+
+    raise TypeError(f"schema_gen: unsupported type {annotation!r}")
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

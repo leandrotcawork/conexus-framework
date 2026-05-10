@@ -16,6 +16,7 @@ IDENTITY_TOOLS = frozenset({
     "memory_get", "memory_set", "memory_list_facts", "memory_delete",
     "block_get", "block_set", "block_list",
     "wiki_read", "wiki_list", "wiki_search", "wiki_write", "wiki_append_log",
+    "wiki_delete", "wiki_exists", "wiki_lint", "wiki_index_update", "wiki_move",
 })
 
 

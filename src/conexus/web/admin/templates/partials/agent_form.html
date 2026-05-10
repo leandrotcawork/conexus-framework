@@ -1,4 +1,13 @@
-<div x-data='{ tab: "identity", llmProvider: {{ (fm.llm.provider if fm.llm else "openai") | tojson }}, llmModel: {{ (fm.llm.model if fm.llm else "gpt-4o-mini") | tojson }}, llmOptions: {{ llm_options | tojson }} }'>
+<div x-data='{
+  tab: "identity",
+  llmProvider: {{ (fm.llm.provider if fm.llm else "openai") | tojson }},
+  llmModel: {{ (fm.llm.model if fm.llm else "gpt-4o-mini") | tojson }},
+  llmOptions: {{ llm_options | tojson }},
+  configuredProviders: new Set({{ configured_providers | tojson }}),
+  showAllProviders: true,
+  get activeOptions() { return this.showAllProviders ? this.llmOptions : Object.fromEntries(Object.entries(this.llmOptions).filter(([p]) => this.configuredProviders.has(p))); },
+  get providerHasKey() { return this.configuredProviders.has(this.llmProvider); }
+}'>
   <!-- Tab navigation -->
   <nav class="flex gap-0.5 border-b border-slate-200 mb-4 -mx-5 px-5 overflow-x-auto">
     {% for t in ["identity","llm","tools","skills","persistence","budget","prompt"] %}
@@ -26,13 +35,14 @@
 
   <!-- LLM tab -->
   <div x-show="tab==='llm'" x-cloak class="space-y-4">
+    <!-- Provider/model row -->
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Provider</label>
         <select name="llm_provider" x-model="llmProvider"
-                @change="llmModel = (llmOptions[llmProvider] || [])[0] || ''"
+                @change="llmModel = (activeOptions[llmProvider] || [])[0] || ''"
                 class="input">
-          <template x-for="p in Object.keys(llmOptions)" :key="p">
+          <template x-for="p in Object.keys(activeOptions)" :key="p">
             <option :value="p" x-text="p" :selected="p === llmProvider"></option>
           </template>
         </select>
@@ -40,58 +50,135 @@
       <div>
         <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Model</label>
         <select name="llm_model" x-model="llmModel" class="input font-mono text-sm">
-          <template x-for="m in (llmOptions[llmProvider] || [])" :key="m">
+          <template x-for="m in (activeOptions[llmProvider] || [])" :key="m">
             <option :value="m" x-text="m" :selected="m === llmModel"></option>
           </template>
         </select>
       </div>
     </div>
-    <div>
-      <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Temperature</label>
-      <input name="llm_temperature" type="number" step="0.1" min="0" max="2"
-             value="{{ fm.llm.temperature if fm.llm else '0.4' }}" class="input w-28">
+
+    <!-- No-key warning -->
+    <div x-show="!providerHasKey"
+         class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+      <svg class="mt-0.5 h-3.5 w-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+      <span>No API key configured for <strong x-text="llmProvider"></strong> — add <strong x-text="`${llmProvider.toUpperCase()}_API_KEY`"></strong> to <code>.env</code> and restart Studio.</span>
+    </div>
+
+    <!-- Temperature + toggle row -->
+    <div class="flex items-center justify-between">
+      <div>
+        <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Temperature</label>
+        <input name="llm_temperature" type="number" step="0.1" min="0" max="2"
+               value="{{ fm.llm.temperature if fm.llm else '0.4' }}" class="input w-28">
+      </div>
+      <label class="flex cursor-pointer items-center gap-2 text-xs text-slate-500 select-none">
+        <input type="checkbox" x-model="showAllProviders" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+        Show all providers
+      </label>
     </div>
   </div>
 
   <!-- Tools tab -->
-  <div x-show="tab==='tools'" x-cloak class="space-y-3">
-    <div>
-      <label class="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Enabled tools</label>
-      <input name="tools" value="{{ fm.tools | join(', ') if fm.tools else '' }}"
-             placeholder="e.g. memory_get, wiki_read"
-             class="input font-mono text-sm">
-      <p class="mt-1 text-xs text-slate-400">Comma-separated method names.</p>
-    </div>
-    {% if methods %}
-    <div class="border border-slate-200 rounded-lg overflow-hidden">
-      <table class="w-full text-xs">
-        <thead class="bg-slate-50 border-b border-slate-200">
-          <tr>
-            <th class="text-left px-3 py-2 font-medium text-slate-600">Method</th>
-            <th class="text-left px-3 py-2 font-medium text-slate-600">Enabled</th>
-            <th class="text-left px-3 py-2 font-medium text-slate-600">Signature</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          {% for m in methods %}
-          <tr class="hover:bg-slate-50">
-            <td class="px-3 py-2 font-mono text-indigo-700">{{ m.name }}</td>
-            <td class="px-3 py-2">
-              {% if m.name in (fm.tools or []) %}
-                <span class="badge badge-ok">on</span>
-              {% else %}
-                <span class="text-slate-300">—</span>
-              {% endif %}
-            </td>
-            <td class="px-3 py-2 text-slate-500 font-mono">{{ m.description or m.docstring or "" }}</td>
-          </tr>
+  <div x-show="tab==='tools'" x-cloak class="space-y-4">
+
+    <!-- Native -->
+    <section>
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Native ({{ capability.native | length }})</h3>
+      {% if capability.native %}
+        <ul class="border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {% for m in capability.native %}
+          <li class="px-3 py-2 text-xs">
+            <span class="font-mono text-indigo-700">{{ m.name }}</span>
+            <span class="text-slate-500">— {{ m.description or m.docstring or "" }}</span>
+          </li>
           {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="text-sm text-slate-400">No methods found in tools.py.</p>
-    {% endif %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-slate-400">No native tools.</p>
+      {% endif %}
+    </section>
+
+    <!-- Identity -->
+    <section>
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Identity ({{ capability.identity | length }})</h3>
+      {% if capability.identity %}
+        <ul class="border border-slate-200 rounded-lg divide-y divide-slate-100">
+          {% for m in capability.identity %}
+          <li class="px-3 py-2 text-xs">
+            <span class="font-mono text-indigo-700">{{ m.name }}</span>
+            <span class="text-slate-500">— {{ m.description or m.docstring or "" }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-slate-400">Identity disabled.</p>
+      {% endif %}
+    </section>
+
+    <!-- Skill Packs -->
+    <section>
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Skill Packs ({{ capability.packs | length }})</h3>
+      {% for p in capability.packs %}
+      <div class="mb-3 border border-slate-200 rounded-lg overflow-hidden">
+        <div class="px-3 py-2 bg-slate-50 flex justify-between items-center text-xs">
+          <span><span class="font-mono text-indigo-700">{{ p.id }}</span> <span class="text-slate-400">v{{ p.version }} · {{ p.backend }}</span></span>
+          <button type="button"
+                  hx-post="/admin/agents/{{ agent.name }}/packs/{{ p.id }}/uninstall"
+                  hx-swap="none"
+                  hx-on::after-request="window.location.reload()"
+                  class="text-xs text-rose-600 hover:underline">Remove</button>
+        </div>
+        {% if p.methods %}
+        <ul class="divide-y divide-slate-100">
+          {% for m in p.methods %}
+          <li class="px-3 py-1.5 text-xs">
+            <span class="font-mono text-indigo-700">{{ m.name }}</span>
+            <span class="text-slate-500">— {{ m.description or m.docstring or "" }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="text-sm text-slate-400">No skill packs installed. <a href="/admin/packs" class="text-indigo-600 hover:underline">Browse marketplace</a></p>
+      {% endfor %}
+
+      <!-- Available to install -->
+      {% set installed_ids = capability.packs | map(attribute='id') | list %}
+      {% set available = available_packs | rejectattr('id', 'in', installed_ids) | list %}
+      {% if available %}
+      <details class="mt-2">
+        <summary class="text-xs text-slate-500 cursor-pointer">Add a pack ({{ available | length }} available)</summary>
+        <div class="mt-2 space-y-2">
+          {% for s in available %}
+          <div class="flex justify-between items-center px-3 py-2 border border-slate-200 rounded-lg text-xs">
+            <span><span class="font-mono text-indigo-700">{{ s.id }}</span> <span class="text-slate-400">v{{ s.version }}</span><br><span class="text-slate-500">{{ s.ui.description }}</span></span>
+            <button type="button"
+                    hx-post="/admin/agents/{{ agent.name }}/packs/{{ s.id }}/install"
+                    hx-swap="none"
+                    hx-on::after-request="window.location.reload()"
+                    class="text-xs text-indigo-600 hover:underline">Install</button>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </section>
+
+    <!-- Connectors -->
+    <section>
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Connectors ({{ capability.connectors | length }})</h3>
+      {% for c in capability.connectors %}
+      <div class="mb-2 px-3 py-2 border border-slate-200 rounded-lg text-xs">
+        <span class="font-mono text-indigo-700">{{ c.id }}</span>
+        <span class="text-slate-400">v{{ c.version }} · {{ c.category }}</span>
+        <p class="text-slate-500 mt-0.5">{{ c.description }}</p>
+      </div>
+      {% else %}
+      <p class="text-sm text-slate-400">No connectors enabled.</p>
+      {% endfor %}
+    </section>
+
   </div>
 
   <!-- Skills tab -->

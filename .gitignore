@@ -55,3 +55,6 @@ knowledge-wiki/
 # Generated artifacts
 docs/*.html
 *.tasks.json
+
+# Per-agent wiki content (LocalBackend)
+agents/*/wiki/

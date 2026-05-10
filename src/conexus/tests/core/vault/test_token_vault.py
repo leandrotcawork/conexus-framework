@@ -5,7 +5,7 @@ from conexus.core.vault.token_vault import TokenVault
 
 
 def test_put_get_round_trip(tmp_path):
-    store = SqliteStore(str(tmp_path / "v.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     v = TokenVault(store, master_secret=b"x" * 32)
     v.put(
@@ -23,14 +23,14 @@ def test_put_get_round_trip(tmp_path):
 
 
 def test_get_missing_returns_none(tmp_path):
-    store = SqliteStore(str(tmp_path / "v.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     v = TokenVault(store, master_secret=b"x" * 32)
     assert v.get("u1", "https://mcp.example/") is None
 
 
 def test_expired_flag(tmp_path):
-    store = SqliteStore(str(tmp_path / "v.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     v = TokenVault(store, master_secret=b"x" * 32)
     v.put(
@@ -46,7 +46,7 @@ def test_expired_flag(tmp_path):
 
 
 def test_delete(tmp_path):
-    store = SqliteStore(str(tmp_path / "v.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     v = TokenVault(store, master_secret=b"x" * 32)
     v.put(

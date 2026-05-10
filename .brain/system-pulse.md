@@ -1,10 +1,13 @@
 # System Pulse — Conexus
-> Auto-updated: 2026-05-08
+> Auto-updated: 2026-05-09 (session #11)
 
 ## Current Phase
-**Studio V1 COMPLETE.** Waves 3-4 shipped: connections_repo + tool_diff services, connections page + reauth stub, diff modal, live YAML preview, REPL reset, Cmd+K palette, restart banner, full UI redesign (Inter/Fira Code + indigo system, 14 templates). Squash-merged → master, 47 tests green. T-045 (Ana identity migration) only remaining planned task.
+**Memory + Wiki Phase 2 COMPLETE**. GitHubAppBackend shipped (7 commits, 24 tests green). Phase 10 fully done. T-045 (Ana identity migration) permanently skipped by user. No active phase — next priority TBD.
 
 ## Recent Changes
+- 2026-05-09 (#11): Memory+Wiki Phase 2 shipped (7 commits). New: git_auth.py (JWT+token cache), github_app.py (GitHubAppBackend), github_wiki.py (OAuth callback), github_app_installs table. Updated: _build_wiki dispatch (agent_id+store), Studio agents.py+edit.html (Connect/Disconnect). 24 tests green. Opus SHIP.
+- 2026-05-08 (#10): E2E verified — memory_set routing works in live REPL. Root cause of prior failure: stale uvicorn process. Restart Studio after framework changes.
+- 2026-05-08: Memory+Wiki Phase 1 shipped (12 commits ea62282..a0e5e77). New: `core/memory/wiki/` package (WikiBackend Protocol, LocalBackend, safe_join). WikiStore refactored to facade (191→60 lines, no git). Identity prompt auto-prepend (DEFAULT_MEMORY_PROMPT_PT_BR). SKILL.md: wiki.backend + prompt_override. identity_runtime: _build_wiki dispatch + skill_dir attr. notes-pack descriptions disambiguated. 64 tests green. Phase review: SHIP (Opus).
 - 2026-05-08: Studio V1 complete (Waves 3-4 + UI redesign, squash-merged). New: web/admin/services/connections_repo.py + tool_diff.py, routes/connections.py, static/cmdk.js. Rewritten: app.css + base.html + 12 templates (Inter/Fira Code, indigo-600, flat light design). Modified: routes/connectors.py (diff endpoint), routes/agents.py (YAML preview), routes/repl.py (reset). 47 tests green.
 - 2026-05-07: Phase 11 Connector Marketplace complete (26 commits, 892aa5b..154151f). New: oauth/, vault/, connectors/, web/, adapters/telegram_auth.py, connectors/registry.json, _marketplace_demo connector pack. SqliteStore: oauth_pkce_state, oauth_tokens, oauth_clients tables. AgentHandlerConfig: user_id + on_auth_required. ADR-002: PKCE verifier server-side. Wiki partitions 03/11/14/16/20 updated.
 - 2026-05-03: Identity baseline 9/10 (commits b499d2f..10caf36). New modules: core/identity/, core/history/, cli/identity_runtime.py. SqliteStore: facts now (agent_id, key, value); new tables identity_blocks + chat_summaries. AgentRuntime+AgentHandlerConfig wired for identity/compactor. Opt-in via `identity:` block in SKILL.md. Opus review APPROVED. E2E test green.
@@ -26,6 +29,7 @@ src/conexus/core/ = framework kernel (agent_handler, agent_registry, llm, memory
   + memory/handoff_audit.py, tool_audit.py                                                     ← Phase 8/9
   + mcp/__init__.py, mcp/producer.py (FastMCP wiki server)                                     ← Phase 9
   + identity/ (blocks, tools, context), history/ (summarizer, compactor)                        ← Phase 10
+  + memory/wiki/git_auth.py, memory/wiki/github_app.py (GitHubAppBackend)                      ← Phase 10 P2
   + oauth/ (pkce, state, metadata, client, errors), vault/ (crypto, token_vault)                ← Phase 11
   + connectors/ (pack, registry), web/ (oauth_router, app), adapters/telegram_auth.py           ← Phase 11
   + backends/mcp_http_backend.py                                                                 ← Phase 11
@@ -47,6 +51,9 @@ conexus pip wheel = src/conexus/ only (framework deps subset)
 - All policy: `docs/dev-workflow/` — read once per session
 
 ## Known Risks and Tech Debt
+- Studio requires restart after framework source changes — uvicorn has no hot-reload for `src/conexus/` modules; agent SKILL.md/tools.py changes are detected by mtime but framework module changes are not
+- GitHubAppBackend git subprocess blocks event loop — asyncio.to_thread deferred (acceptable single-user MVP)
+- GitHubAppBackend local_root=skill_dir/"wiki" — on Fly.io this is read-only image, not /data volume; needs data_dir switch for prod deployment
 - `codex:codex-rescue` sandbox blocks file reads in this env — direct audit needed for future phases
 - Windows pytest full suite hangs (>2 min, no output) — likely scheduler/Telegram test that doesn't stop; bypass via per-file batched runs
 - Phase 6-11 commits all local; not pushed to remote yet (deferred per user — 26+ commits ahead)
@@ -83,7 +90,10 @@ conexus pip wheel = src/conexus/ only (framework deps subset)
 - Dev workflow: `docs/dev-workflow/`
 - Phase 9 plan: `docs/superpowers/plans/2026-04-30-phase-9-runtime-replay-mcp.md`
 - Identity baseline plan: `docs/superpowers/plans/2026-05-02-agent-identity-baseline.md`
-- Identity modules: `src/conexus/core/identity/{blocks,tools,context}.py`, `src/conexus/core/history/{summarizer,compactor}.py`, `src/conexus/cli/identity_runtime.py`
+- Identity modules: `src/conexus/core/identity/{blocks,tools,context,prompt}.py`, `src/conexus/core/history/{summarizer,compactor}.py`, `src/conexus/cli/identity_runtime.py`
+- Wiki backend: `src/conexus/core/memory/wiki/{backend,local}.py`, `src/conexus/core/memory/wiki_store.py` (facade)
+- GitHub App backend: `src/conexus/core/memory/wiki/git_auth.py`, `src/conexus/core/memory/wiki/github_app.py`
+- GitHub Wiki OAuth route: `src/conexus/web/admin/routes/github_wiki.py`
 - Phase 11 plan: `docs/superpowers/plans/2026-05-03-phase-11-connector-marketplace.md`
 - OAuth stack: `src/conexus/core/oauth/{pkce,state,metadata,client,errors}.py`
 - Token vault: `src/conexus/core/vault/{crypto,token_vault}.py`

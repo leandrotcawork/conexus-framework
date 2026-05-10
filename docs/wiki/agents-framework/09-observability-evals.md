@@ -25,7 +25,7 @@ Three layers are needed:
 3. **Guardrails** — input classifiers, output validators, and runtime policy
    checks. Independent of the model. Composable with the agent loop.
 
-For Conexus specifically: adopt **OpenTelemetry GenAI** at the `TrackedLLM` and
+For Conexus specifically: adopt **OpenTelemetry GenAI** at the `LLMService` (`src/conexus/core/llm/service.py`) and
 `AgentRegistry.execute_tool` boundaries, send traces to **self-hosted Langfuse**
 (runs in Docker, MIT-licensed, fits the Fly.io profile), wire **promptfoo +
 DeepEval** for CI eval suites, and layer **Guardrails-AI** validators around
@@ -41,7 +41,7 @@ A trace is a tree of **spans**. For an agent, the canonical shape is:
 ```
 agent.turn (root)                      # one user message -> one final reply
 ├── budget.check                       # CapChecker.allow()
-├── llm.chat                           # TrackedLLM.complete() - iteration 1
+├── llm.chat                           # LLMService.acompletion() - iteration 1
 │   ├── input: messages (redacted)
 │   ├── output: assistant msg + tool_calls
 │   ├── tokens: prompt / completion / cache_read / cache_write

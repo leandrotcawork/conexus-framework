@@ -33,7 +33,7 @@ def test_connections_page_renders(tmp_path: Path) -> None:
 
 
 def test_connections_empty_state(tmp_path: Path) -> None:
-    store = SqliteStore(str(tmp_path / "conexus.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     client = TestClient(make_admin_app(agents_dir=tmp_path, data_dir=tmp_path))
     resp = client.get("/admin/connections")

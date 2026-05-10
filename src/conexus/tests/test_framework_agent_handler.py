@@ -227,3 +227,59 @@ async def test_needs_auth_short_circuits(tmp_db_path):
     assert len(events) == 1
     assert events[0].server_url == "https://mcp.example/"
     assert events[0].user_id == "user123"
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_stable_no_timestamp(tmp_db_path):
+    """System message must NOT contain BRT timestamp after cache-control fix."""
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
+    cap_checker = CapChecker(MagicMock())
+
+    captured_systems: list[str] = []
+
+    def capturing_acall(**kw):
+        msgs = kw.get("messages", [])
+        sys_msg = next((m for m in msgs if m.get("role") == "system"), None)
+        if sys_msg:
+            content = sys_msg["content"]
+            text = content if isinstance(content, str) else content[0]["text"]
+            captured_systems.append(text)
+        return (_mock_resp(content="ok"), "gemini/test")
+
+    cfg = _make_config(tmp_db_path, llm_responses=[])
+    cfg.llm.acall = AsyncMock(side_effect=capturing_acall)
+
+    await handle_agent_message(cfg, store, cap_checker, "first")
+    await handle_agent_message(cfg, store, cap_checker, "second")
+
+    assert len(captured_systems) >= 2
+    assert captured_systems[0] == captured_systems[1], "system prompt changed between calls"
+    assert "BRT" not in captured_systems[0]
+    assert "Data/hora" not in captured_systems[0]
+
+
+@pytest.mark.asyncio
+async def test_get_current_time_builtin_intercepted(tmp_db_path):
+    """get_current_time builtin handled directly — not routed to execute_tool."""
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
+    cap_checker = CapChecker(MagicMock())
+    execute_tool_calls: list[str] = []
+
+    tc = _mock_tool_call("id1", "get_current_time", {})
+    responses = iter([
+        _mock_resp(tool_calls=[tc]),
+        _mock_resp(content="done"),
+    ])
+    cfg = _make_config(
+        tmp_db_path,
+        llm_responses=[],
+        execute_tool=lambda name, args: execute_tool_calls.append(name) or json.dumps({"ok": True}),
+    )
+    cfg.llm.acall = AsyncMock(side_effect=lambda **kw: (next(responses), "gemini/test"))
+
+    reply = await handle_agent_message(cfg, store, cap_checker, "what time is it?")
+    assert reply == "done"
+    # execute_tool must NOT have been called for get_current_time
+    assert "get_current_time" not in execute_tool_calls

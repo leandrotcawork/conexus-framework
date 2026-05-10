@@ -10,7 +10,7 @@ from conexus.core.memory.sqlite_store import SqliteStore
 
 @pytest.fixture
 def store(tmp_path):
-    s = SqliteStore(str(tmp_path / "hist.db"))
+    s = SqliteStore(":memory:")
     s.init_db()
     return s
 

@@ -60,3 +60,52 @@ def test_parse_skill_without_synthesis_llm(tmp_path: Path):
     doc = parse_skill_file(skill_md)
     assert doc.frontmatter.llm_synthesis is None
     assert doc.frontmatter.prefix is None
+
+
+def test_wiki_section_accepts_backend_field():
+    from conexus.core.config.skill_loader import WikiSection
+    s = WikiSection(backend="local", dir="./wiki")
+    assert s.backend == "local"
+    assert s.dir == "./wiki"
+
+
+def test_wiki_section_defaults_backend_to_local():
+    from conexus.core.config.skill_loader import WikiSection
+    s = WikiSection(dir="./wiki")
+    assert s.backend == "local"
+
+
+def test_wiki_section_rejects_unknown_backend():
+    import pytest
+    from conexus.core.config.skill_loader import WikiSection
+    with pytest.raises(ValueError):
+        WikiSection(backend="ftp", dir="./wiki")
+
+
+def test_identity_section_accepts_prompt_override():
+    from conexus.core.config.skill_loader import IdentitySection
+    s = IdentitySection(enabled=True, prompt_override="./custom.md")
+    assert s.prompt_override == "./custom.md"
+
+
+def test_identity_section_default_wiki_is_local():
+    """Backward compat: agents without identity.wiki block still get local wiki."""
+    from conexus.core.config.skill_loader import IdentitySection
+    s = IdentitySection(enabled=True)
+    assert s.wiki is not None
+    assert s.wiki.backend == "local"
+    assert s.wiki.dir == "./wiki"
+
+
+def test_anna_skill_parses_with_default_wiki():
+    """Anna's SKILL.md has identity.enabled but no wiki block — must still load."""
+    from conexus.core.config.skill_loader import parse_skill_file
+    p = Path("agents/anna/SKILL.md")
+    if not p.exists():
+        import pytest
+        pytest.skip("anna SKILL.md not present")
+    doc = parse_skill_file(str(p))
+    assert doc.frontmatter.identity is not None
+    assert doc.frontmatter.identity.enabled is True
+    assert doc.frontmatter.identity.wiki is not None
+    assert doc.frontmatter.identity.wiki.backend == "local"

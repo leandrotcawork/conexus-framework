@@ -1,33 +1,37 @@
 # Last Session — Conexus
-> Date: 2026-05-08 | Session: #8
+> Date: 2026-05-09 | Session: #11
 
 ## What Was Accomplished
-- Wave 3: connections_repo.py (list_connections + status_for), tool_diff.py (diff_for_connector + ToolDiff)
-- Wave 3: connections status page + reauth stub route, diff modal endpoint + diff_modal.html (3-metric grid)
-- Wave 4: live YAML preview pane (HTMX delay:350ms → agent_yaml_preview partial)
-- Wave 4: REPL reset endpoint (POST /repl/{name}/test/reset), Cmd+K palette (cmdk.js Alpine), restart banner
-- Full UI redesign: Inter + Fira Code fonts, indigo-600 accent, slate-50 bg — 14 templates rewritten, app.css rebuilt
-- CLI `conexus studio` verified already implemented in __main__.py (no changes needed)
-- Squash-merged Studio V1 branch → master (47 tests passing)
+- Codex pre-validated Phase 2 plan (3 rounds: 3 blockers fixed then APPROVE)
+- Dispatched T1+T2 in parallel (JWT auth + DB schema)
+- Dispatched T3+T4 in parallel (GitHubAppBackend + OAuth callback route)
+- Dispatched T5+T6 in parallel (identity_runtime wire + Studio UI)
+- Fixed 2 bugs found during T3 execution: README seeding removed from _ensure_clone, delete() reordered to pull-before-check
+- Opus review: SHIP — applied post-review fix (delete() order + test mock scope)
+- wiki-keeper updated 4 partitions (00-index, 04-memory, 07-rag-wiki, 21-studio)
+- Phase 2 complete: 7 commits, 24 tests green, ruff clean
 
 ## What Changed in the System
-- New: `src/conexus/web/admin/services/connections_repo.py`, `tool_diff.py`
-- New: `src/conexus/web/admin/routes/connections.py`
-- New: `src/conexus/web/admin/static/cmdk.js`
-- Modified: `routes/connectors.py` (diff endpoint), `routes/agents.py` (preview), `routes/repl.py` (reset)
-- Rewritten: `static/app.css`, `templates/base.html`, 12+ other templates
-- Modified: `web/admin/app.py` (connections router registered)
+- New: `src/conexus/core/memory/wiki/git_auth.py` — JWT + installation token cache
+- New: `src/conexus/core/memory/wiki/github_app.py` — GitHubAppBackend (WikiBackend impl)
+- New: `src/conexus/web/admin/routes/github_wiki.py` — OAuth install callback routes
+- Modified: `src/conexus/core/memory/wiki/__init__.py` — exports GitHubAppBackend
+- Modified: `src/conexus/core/memory/sqlite_store.py` — github_app_installs table + 3 helpers
+- Modified: `src/conexus/cli/identity_runtime.py` — _build_wiki signature + github_app branch
+- Modified: `src/conexus/web/admin/routes/agents.py` — github_install context + disconnect endpoint
+- Modified: `src/conexus/web/admin/templates/agents/edit.html` — Connect/Disconnect section
 
 ## Decisions Made This Session
-- UI design system: Flat Design + light mode, Inter/Fira Code, indigo-600 — use /ui-ux-pro-max for any future template work
-- YAML pane intentionally dark terminal (`.yaml-pane`, `#0f172a` + `#86efac`) — contrast by design
-- SqliteStore lazy init: routes call `store.init_db()` before first query on fresh stores
-- Used actual exports (`diff_for_connector` → `ToolDiff`) not plan's misnamed aliases
+- gh: prefix isolation in oauth_pkce_state.code_verifier (reuses Phase 11 table safely)
+- delete() pulls before checking existence (remote-only files are deletable after pull)
+- local_root=skill_dir/"wiki" for GitHubAppBackend (Fly.io volume concern deferred)
 
 ## What's Immediately Next
-- T-045: Migrate Ana to identity baseline (add `identity:` block to agents/ana/SKILL.md, drop redundant memory_*/wiki_* from tools.py)
-- No active phase — all phases complete
+- Phase 10 is now complete (all tasks done including T-063 Phase1 + Phase2 implied by T-063 notes)
+- T-045 (Ana identity migration) was permanently skipped by user
+- No active phase — user to decide next priority
 
 ## Open Questions
-- Telegram `on_auth_required` factory not wired into actual bot handler yet
-- Google Calendar MCP server_url still placeholder (mcp.google.com/calendar not live)
+- Fly.io: local_root=skill_dir/"wiki" may need to move to data_dir for volume persistence
+- git subprocess blocks event loop — asyncio.to_thread deferred to future phase
+- Telegram on_auth_required factory still not wired into actual bot handler

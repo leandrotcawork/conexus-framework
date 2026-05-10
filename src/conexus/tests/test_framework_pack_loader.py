@@ -160,6 +160,8 @@ async def test_skill_loader_lifecycle_starts_mcp(tmp_path):
         "    req = json.loads(line.strip())\n"
         "    if req['method'] == 'initialize':\n"
         "        respond(req['id'], {'protocolVersion':'2024-11-05','capabilities':{},'serverInfo':{'name':'e','version':'0.1.0'}})\n"
+        "    elif req['method'] == 'tools/list':\n"
+        "        respond(req['id'], {'tools':[{'name':'echo','description':'echo','inputSchema':{'type':'object'}}]})\n"
         "    elif req['method'] == 'tools/call':\n"
         "        respond(req['id'], {'content':[{'type':'text','text':req['params']['arguments']['msg']}]})\n"
     )

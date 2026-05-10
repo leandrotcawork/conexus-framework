@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from conexus.core.budget.cap_checker import BudgetCap, CapChecker
 from conexus.core.llm.context_tag import set_context
-from conexus.core.llm.router import TrackedLLM
+from conexus.core.llm.service import LLMService
 from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.oauth.errors import NeedsAuthError
 
@@ -36,7 +36,7 @@ class NeedsAuthEvent:
 @dataclass
 class AgentHandlerConfig:
     name: str                            # "ana" or "pesquisador"
-    llm: TrackedLLM
+    llm: LLMService
     tools_schema: list[dict]
     execute_tool: Callable[..., Any]     # (name: str, args: dict) -> str, sync or async
     system_prompt: str                   # fixed portion — datetime is appended at call time
@@ -66,7 +66,7 @@ async def handle_agent_message(
 ) -> str:
     """Run the tool-calling agentic loop for any agent.
 
-    Acquires no locks itself — concurrency is handled inside TrackedLLM.acall().
+    Acquires no locks itself — concurrency is handled inside LLMService.acall().
     """
     from conexus.core.trifecta.guard import TrifectaGuard, TrifectaViolation
 
@@ -81,8 +81,6 @@ async def handle_agent_message(
         guard = TrifectaGuard.from_handoff(cfg.tool_tags, cfg.incoming_handoff)
     else:
         guard = TrifectaGuard(cfg.tool_tags)
-
-    now_brt = datetime.now(_BRT)
 
     # Build history: compactor path when identity+history_cfg set, else legacy chat_recent
     history_msgs: list[dict] = []
@@ -119,10 +117,11 @@ async def handle_agent_message(
             ir.store,
             ir.wiki,
             ir.blocks,
+            ir.skill_dir,
         )
 
     base_system = (identity_ctx + "\n\n" if identity_ctx else "") + cfg.system_prompt
-    system = base_system + f"\n\nData/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}"
+    system = base_system
 
     messages: list[dict] = [{"role": "system", "content": system}]
     if summary_msg is not None:
@@ -137,13 +136,20 @@ async def handle_agent_message(
     # tool loop exhausts max_turns without producing a text reply.
     store.chat_append(cfg.name, "user", body)
 
+    from conexus.core.tools.builtin_time import BuiltinTimeTools
+    from conexus.core.tools.schema_gen import generate_tool_schemas
+    _builtin = BuiltinTimeTools()
+    _builtin_schema = generate_tool_schemas(BuiltinTimeTools, ["get_current_time"])
+    _all_tools_schema = cfg.tools_schema + _builtin_schema
+
     with set_context("reactive"):
         for _turn in range(cfg.max_turns):
             resp, actual_model = await cfg.llm.acall(
                 messages=messages,
-                tools=cfg.tools_schema,
+                tools=_all_tools_schema,
                 tool_choice="auto",
                 temperature=cfg.llm.config.temperature,
+                cache_control=True,
             )
             print(f"[llm] {cfg.name} answered: {actual_model}", flush=True)
 
@@ -206,11 +212,14 @@ async def handle_agent_message(
                         await progress(cfg.progress_map[fn_name])
 
                     try:
-                        result = (
-                            await cfg.execute_tool(fn_name, fn_args)
-                            if _is_async_tool
-                            else cfg.execute_tool(fn_name, fn_args)
-                        )
+                        if fn_name == "get_current_time":
+                            result = json.dumps(_builtin.get_current_time())
+                        else:
+                            result = (
+                                await cfg.execute_tool(fn_name, fn_args)
+                                if _is_async_tool
+                                else cfg.execute_tool(fn_name, fn_args)
+                            )
                     except NeedsAuthError as nae:
                         if cfg.on_auth_required:
                             await cfg.on_auth_required(NeedsAuthEvent(
@@ -271,9 +280,9 @@ async def handle_team_message(
     if session_id is None:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
 
-    registry = TeamRegistry(team)
+    registry = team if isinstance(team, TeamRegistry) else TeamRegistry(team)
     store.init_db()
-    audit_conn: sqlite3.Connection = sqlite3.connect(store.db_path)
+    audit_conn: sqlite3.Connection = store.conn
     try:
         router = HandoffRouter(registry, conn=audit_conn, session_id=session_id)
         policy = registry.policy
@@ -473,4 +482,5 @@ async def handle_team_message(
         store.chat_append(starter, "assistant", last_reply)
         return last_reply
     finally:
-        audit_conn.close()
+        if audit_conn is not getattr(store, "_mem_conn", None):
+            audit_conn.close()

@@ -13,9 +13,9 @@ from conexus.core.memory.wiki_store import WikiStore
 
 @pytest.fixture
 def deps(tmp_path):
-    store = SqliteStore(str(tmp_path / "id.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
-    wiki = WikiStore(str(tmp_path / "wiki"))
+    wiki = WikiStore.local(tmp_path / "wiki")
     blocks = BlockStore(store)
     tools = IdentityTools(
         agent_id="ana",
@@ -56,7 +56,9 @@ def test_block_set_unknown_block_rejected(deps):
 def test_wiki_write_read(deps, tmp_path):
     tools, _, _, _ = deps
     tools.wiki_write(path="about.md", content="# About\nLeandro builds Conexus.")
-    assert "Leandro builds Conexus" in tools.wiki_read(path="about.md")
+    result = tools.wiki_read(path="about.md")
+    assert result["ok"] is True
+    assert "Leandro builds Conexus" in result["content"]
 
 
 def test_wiki_list(deps):
