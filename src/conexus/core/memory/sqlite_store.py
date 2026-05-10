@@ -179,6 +179,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _apply_pragmas(conn: sqlite3.Connection, *, in_memory: bool) -> None:
+    if not in_memory:
+        conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+
+
 def _migrate_facts_v1_to_v2(conn: sqlite3.Connection) -> None:
     """Migrate legacy facts table (no agent_id) to scoped schema."""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(facts)").fetchall()]
@@ -209,6 +216,7 @@ class SqliteStore:
             self._mem_conn: sqlite3.Connection | None = sqlite3.connect(
                 ":memory:", check_same_thread=False
             )
+            _apply_pragmas(self._mem_conn, in_memory=True)
             self._mem_conn.row_factory = sqlite3.Row
         else:
             self.db_path = Path(db_path)
@@ -245,6 +253,7 @@ class SqliteStore:
             yield self._mem_conn
             return
         conn = sqlite3.connect(self.db_path)
+        _apply_pragmas(conn, in_memory=False)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
