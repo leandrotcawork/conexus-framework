@@ -123,3 +123,93 @@ def test_ping_log_idempotency():
     assert store.ping_was_sent("briefing", "2026-04-12", "ana") is False
     store.ping_mark_sent("briefing", "2026-04-12", "ana")
     assert store.ping_was_sent("briefing", "2026-04-12", "ana") is True
+
+
+# ----- ping_log tri-state tests -----
+
+def test_ping_get_state_pending():
+    store = _fresh()
+    assert store.ping_get_state("job", "r1", "ana") is None
+    store.ping_mark_pending("job", "r1", "ana")
+    # first pending call: attempts=1, state=pending
+    row = store.conn.execute("SELECT attempts FROM ping_log WHERE kind='job'").fetchone()
+    assert row["attempts"] == 1
+    assert store.ping_get_state("job", "r1", "ana") == "pending"
+
+
+def test_ping_get_state_sent():
+    store = _fresh()
+    store.ping_mark_pending("job", "r1", "ana")
+    store.ping_mark_sent("job", "r1", "ana")
+    assert store.ping_get_state("job", "r1", "ana") == "sent"
+    assert store.ping_was_sent("job", "r1", "ana") is True
+
+
+def test_ping_mark_failed_sets_failure_state():
+    """ping_mark_failed sets failed_at/last_error; attempts incremented only by ping_mark_pending."""
+    store = _fresh()
+    store.ping_mark_pending("job", "r1", "ana")  # attempts=1
+    store.ping_mark_failed("job", "r1", "ana", "timeout")
+    row = store.conn.execute(
+        "SELECT attempts, failed_at, last_error FROM ping_log WHERE kind='job' AND ref_id='r1' AND agent_name='ana'"
+    ).fetchone()
+    assert row["attempts"] == 1  # NOT incremented by mark_failed
+    assert row["failed_at"] is not None
+    assert row["last_error"] == "timeout"
+    assert store.ping_get_state("job", "r1", "ana") == "failed"
+    assert store.ping_was_sent("job", "r1", "ana") is False
+
+
+def test_ping_mark_sent_after_failed_clears_failure():
+    store = _fresh()
+    store.ping_mark_pending("job", "r1", "ana")
+    store.ping_mark_failed("job", "r1", "ana", "err")
+    store.ping_mark_sent("job", "r1", "ana")
+    assert store.ping_get_state("job", "r1", "ana") == "sent"
+    row = store.conn.execute(
+        "SELECT failed_at, last_error FROM ping_log WHERE kind='job' AND ref_id='r1' AND agent_name='ana'"
+    ).fetchone()
+    assert row["failed_at"] is None
+    assert row["last_error"] is None
+
+
+def test_ping_dead_letter_cap_at_three_attempts():
+    """After 3 ping_mark_pending calls without success, ping_was_sent returns True."""
+    store = _fresh()
+    store.ping_mark_pending("job", "r1", "ana")  # attempts=1
+    assert store.ping_was_sent("job", "r1", "ana") is False
+    store.ping_mark_failed("job", "r1", "ana", "err1")
+    store.ping_mark_pending("job", "r1", "ana")  # attempts=2
+    assert store.ping_was_sent("job", "r1", "ana") is False
+    store.ping_mark_failed("job", "r1", "ana", "err2")
+    store.ping_mark_pending("job", "r1", "ana")  # attempts=3
+    assert store.ping_was_sent("job", "r1", "ana") is True  # dead-lettered
+
+
+def test_migration_adds_columns_to_existing_table():
+    """Simulate DB with old ping_log schema (no tri-state columns)."""
+    store = SqliteStore(":memory:")
+    # Build old schema manually (no attempts/failed_at/last_error)
+    store._mem_conn.executescript("""
+        CREATE TABLE ping_log (
+            kind TEXT NOT NULL,
+            ref_id TEXT NOT NULL,
+            agent_name TEXT NOT NULL,
+            sent_at TEXT,
+            PRIMARY KEY (kind, ref_id, agent_name)
+        );
+        INSERT INTO ping_log (kind, ref_id, agent_name, sent_at) VALUES ('x', 'y', 'z', '2026-01-01');
+        INSERT INTO ping_log (kind, ref_id, agent_name, sent_at) VALUES ('a', 'b', 'c', NULL);
+    """)
+    store._mem_conn.commit()
+    store.init_db()
+    cols = {r[1] for r in store.conn.execute("PRAGMA table_info(ping_log)").fetchall()}
+    assert "attempts" in cols
+    assert "failed_at" in cols
+    assert "last_error" in cols
+    # already-sent row backfilled to attempts=1
+    sent_row = store.conn.execute("SELECT attempts FROM ping_log WHERE kind='x'").fetchone()
+    assert sent_row["attempts"] == 1
+    # pending row stays at attempts=0
+    pending_row = store.conn.execute("SELECT attempts FROM ping_log WHERE kind='a'").fetchone()
+    assert pending_row["attempts"] == 0

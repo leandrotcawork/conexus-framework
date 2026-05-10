@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS ping_log (
     ref_id      TEXT NOT NULL,
     agent_name  TEXT NOT NULL,
     sent_at     TEXT,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    failed_at   TEXT,
+    last_error  TEXT,
     PRIMARY KEY (kind, ref_id, agent_name)
 );
 
@@ -209,6 +212,23 @@ def _migrate_facts_v1_to_v2(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_ping_log_v2(conn: sqlite3.Connection) -> None:
+    """Add attempts/failed_at/last_error to ping_log for tri-state tracking."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ping_log'"
+    ).fetchone()
+    if not exists:
+        return  # fresh DB — SCHEMA creates it with correct columns
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ping_log)").fetchall()}
+    if "attempts" in cols:
+        return  # already migrated
+    conn.execute("ALTER TABLE ping_log ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE ping_log ADD COLUMN failed_at TEXT")
+    conn.execute("ALTER TABLE ping_log ADD COLUMN last_error TEXT")
+    conn.execute("UPDATE ping_log SET attempts = 1 WHERE sent_at IS NOT NULL AND attempts = 0")
+    conn.commit()
+
+
 class SqliteStore:
     def __init__(self, db_path: str | Path):
         if str(db_path) == ":memory:":
@@ -229,6 +249,7 @@ class SqliteStore:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
             _migrate_facts_v1_to_v2(conn)
+            _migrate_ping_log_v2(conn)
             conn.executescript(SCHEMA)
             conn.commit()
             init_handoff_audit(conn)
@@ -410,9 +431,9 @@ class SqliteStore:
     def ping_mark_pending(self, kind: str, ref_id: str, agent_name: str) -> None:
         with self.connect() as conn:
             conn.execute(
-                """INSERT INTO ping_log (kind, ref_id, agent_name, sent_at)
-                   VALUES (?, ?, ?, NULL)
-                   ON CONFLICT(kind, ref_id, agent_name) DO NOTHING""",
+                """INSERT INTO ping_log (kind, ref_id, agent_name, sent_at, attempts, failed_at, last_error)
+                   VALUES (?, ?, ?, NULL, 1, NULL, NULL)
+                   ON CONFLICT(kind, ref_id, agent_name) DO UPDATE SET attempts=attempts+1""",
                 (kind, ref_id, agent_name),
             )
             conn.commit()
@@ -421,20 +442,42 @@ class SqliteStore:
         ts = _now_iso()
         with self.connect() as conn:
             conn.execute(
-                """INSERT INTO ping_log (kind, ref_id, agent_name, sent_at)
-                   VALUES (?, ?, ?, ?)
-                   ON CONFLICT(kind, ref_id, agent_name) DO UPDATE SET sent_at=excluded.sent_at""",
+                "INSERT INTO ping_log (kind, ref_id, agent_name, sent_at, attempts, failed_at, last_error) VALUES (?, ?, ?, ?, 0, NULL, NULL) ON CONFLICT(kind, ref_id, agent_name) DO UPDATE SET sent_at=excluded.sent_at, failed_at=NULL, last_error=NULL",
                 (kind, ref_id, agent_name, ts),
             )
             conn.commit()
 
-    def ping_was_sent(self, kind: str, ref_id: str, agent_name: str) -> bool:
+    def ping_mark_failed(self, kind: str, ref_id: str, agent_name: str, error: str) -> None:
+        ts = _now_iso()
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE ping_log SET failed_at=?, last_error=? WHERE kind=? AND ref_id=? AND agent_name=?",
+                (ts, error, kind, ref_id, agent_name),
+            )
+            conn.commit()
+
+    def ping_get_state(self, kind: str, ref_id: str, agent_name: str):
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT sent_at FROM ping_log WHERE kind=? AND ref_id=? AND agent_name=?",
+                "SELECT sent_at, failed_at FROM ping_log WHERE kind=? AND ref_id=? AND agent_name=?",
                 (kind, ref_id, agent_name),
             ).fetchone()
-            return row is not None and row["sent_at"] is not None
+        if row is None:
+            return None
+        if row["sent_at"] is not None:
+            return "sent"
+        if row["failed_at"] is not None:
+            return "failed"
+        return "pending"
+
+    def ping_was_sent(self, kind: str, ref_id: str, agent_name: str) -> bool:
+        """True if sent, or dead-lettered (attempts >= 3)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT sent_at, attempts FROM ping_log WHERE kind=? AND ref_id=? AND agent_name=?",
+                (kind, ref_id, agent_name),
+            ).fetchone()
+        return row is not None and (row["sent_at"] is not None or row["attempts"] >= 3)
 
     # ----- wiki index -----
 
