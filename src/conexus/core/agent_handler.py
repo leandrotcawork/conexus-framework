@@ -82,8 +82,6 @@ async def handle_agent_message(
     else:
         guard = TrifectaGuard(cfg.tool_tags)
 
-    now_brt = datetime.now(_BRT)
-
     # Build history: compactor path when identity+history_cfg set, else legacy chat_recent
     history_msgs: list[dict] = []
     summary_msg: dict | None = None
@@ -123,7 +121,7 @@ async def handle_agent_message(
         )
 
     base_system = (identity_ctx + "\n\n" if identity_ctx else "") + cfg.system_prompt
-    system = base_system + f"\n\nData/hora atual (BRT): {now_brt.strftime('%Y-%m-%d %H:%M %Z')}"
+    system = base_system
 
     messages: list[dict] = [{"role": "system", "content": system}]
     if summary_msg is not None:
@@ -138,13 +136,20 @@ async def handle_agent_message(
     # tool loop exhausts max_turns without producing a text reply.
     store.chat_append(cfg.name, "user", body)
 
+    from conexus.core.tools.builtin_time import BuiltinTimeTools
+    from conexus.core.tools.schema_gen import generate_tool_schemas
+    _builtin = BuiltinTimeTools()
+    _builtin_schema = generate_tool_schemas(BuiltinTimeTools, ["get_current_time"])
+    _all_tools_schema = cfg.tools_schema + _builtin_schema
+
     with set_context("reactive"):
         for _turn in range(cfg.max_turns):
             resp, actual_model = await cfg.llm.acall(
                 messages=messages,
-                tools=cfg.tools_schema,
+                tools=_all_tools_schema,
                 tool_choice="auto",
                 temperature=cfg.llm.config.temperature,
+                cache_control=True,
             )
             print(f"[llm] {cfg.name} answered: {actual_model}", flush=True)
 
@@ -207,11 +212,14 @@ async def handle_agent_message(
                         await progress(cfg.progress_map[fn_name])
 
                     try:
-                        result = (
-                            await cfg.execute_tool(fn_name, fn_args)
-                            if _is_async_tool
-                            else cfg.execute_tool(fn_name, fn_args)
-                        )
+                        if fn_name == "get_current_time":
+                            result = json.dumps(_builtin.get_current_time())
+                        else:
+                            result = (
+                                await cfg.execute_tool(fn_name, fn_args)
+                                if _is_async_tool
+                                else cfg.execute_tool(fn_name, fn_args)
+                            )
                     except NeedsAuthError as nae:
                         if cfg.on_auth_required:
                             await cfg.on_auth_required(NeedsAuthEvent(

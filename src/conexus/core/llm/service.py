@@ -9,6 +9,42 @@ from dataclasses import dataclass
 from typing import Any
 
 from litellm import Router
+import copy
+
+
+def _apply_cache_control(
+    messages: list[dict], kw: dict
+) -> tuple[list[dict], dict]:
+    """Attach Anthropic cache_control markers to system message + last tool.
+
+    Creates shallow copies — does not mutate caller's data.
+    """
+    messages = list(messages)
+    if messages and messages[0].get("role") == "system":
+        sys_msg = dict(messages[0])
+        content = sys_msg["content"]
+        if isinstance(content, str):
+            sys_msg["content"] = [
+                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+            ]
+        elif isinstance(content, list) and content:
+            blocks = list(content)
+            last = dict(blocks[-1])
+            last["cache_control"] = {"type": "ephemeral"}
+            blocks[-1] = last
+            sys_msg["content"] = blocks
+        messages[0] = sys_msg
+
+    tools = kw.get("tools")
+    if tools:
+        kw = dict(kw)
+        tools = list(tools)
+        last_tool = copy.copy(tools[-1])
+        last_tool["cache_control"] = {"type": "ephemeral"}
+        tools[-1] = last_tool
+        kw["tools"] = tools
+
+    return messages, kw
 
 
 @dataclass(frozen=True)
@@ -55,9 +91,11 @@ class LLMService:
         n = len(self.config.fallback or [])
         return [{"primary": [f"fb{i}" for i in range(n)]}] if n else []
 
-    async def acompletion(self, messages: list[dict], **kw) -> Any:
+    async def acompletion(self, messages: list[dict], *, cache_control: bool = False, **kw) -> Any:
         meta = dict(kw.pop("metadata", {}) or {})
         meta["agent_name"] = self.agent_name
+        if cache_control:
+            messages, kw = _apply_cache_control(messages, kw)
         return await self._router.acompletion(
             model="primary", messages=messages, metadata=meta, **kw,
         )
