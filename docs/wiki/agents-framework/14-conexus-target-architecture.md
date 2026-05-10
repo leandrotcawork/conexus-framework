@@ -34,7 +34,7 @@ After the plan in this document is executed, Conexus is:
 6. **Observability is a day-1 feature.** `trace_id` propagates before the first new feature ships. You cannot optimise what you cannot see, and you cannot debug production from SQLite `LIKE` queries. ([[09-observability-evals §2]].)
 7. **Fail loud at startup, never at runtime.** Schema gen raises on unknown types; skill loader raises on missing budget fields; router raises on unknown model. Runtime stack traces are always better than silent string fallbacks. ([[13 §4.3]].)
 8. **Tool outputs are paginated, not truncated.** An opaque `page_cursor` is the contract; `"…[truncado]"` is a bug. ([[12 §5]].)
-9. **Every LLM call goes through `TrackedLLM`.** No direct `litellm.acompletion`. Voice transcription is a call too. This is the invariant the usage tracker, the budget cap, and the tracer all depend on.
+9. **Every LLM call goes through `LLMService`.** No direct `litellm.acompletion`. Voice transcription is a call too. This is the invariant the usage tracker, the budget cap, and the tracer all depend on. Phase 2 (branch `refactor/llm-layer-litellm-primitives`, commit `6dee0fe`) introduced `LLMService` wrapping `litellm.Router` (see `src/conexus/core/llm/service.py`) as the replacement for the old hand-rolled `TrackedLLM`; `router.py` remains but is on a deletion track (Phase 4). See `docs/wiki/litellm/03-router.md` for `litellm.Router` API details.
 10. **Scheduled jobs are forensic artifacts.** `ping_log` is tri-state (`pending`/`sent`/`failed`), every job writes an audit row, no at-least-once drift into at-most-once by accident.
 11. **Agents don't execute handoffs yet, but the substrate is in place.** Phase 8 shipped `Handoff`, `HandoffRouter`, `TeamRegistry`, `BudgetCascader`, and `handoff_audit`. What remains is the execution loop that drives `handle_agent_message` per hop and wires real agents into a live `TEAM_PACK`. `trace_id` propagation across hops is still pending.
 12. **Git is the undo log.** Wiki writes are commits; memory consolidation is a commit; audit is `git log`. We do not build a parallel history store.
@@ -56,7 +56,7 @@ After the plan in this document is executed, Conexus is:
                   │  │   handle_agent_message (one loop)    │  │
                   │  │     ├─ budget.check (pre + mid)      │  │
                   │  │     ├─ context.build (cache-aware)   │  │
-                  │  │     ├─ TrackedLLM.acall              │  │
+                  │  │     ├─ LLMService.acompletion         │  │
                   │  │     └─ AgentRegistry.execute_tool    │  │
                   │  └──────────────────────────────────────┘  │
                   │  CapChecker · UsageTracker · Tracer         │
@@ -65,7 +65,7 @@ After the plan in this document is executed, Conexus is:
                      │              │             │
       ┌──────────────▼──────┐  ┌────▼──────┐  ┌───▼─────────────────────┐
       │     Memory          │  │   Tools   │  │     LLM layer           │
-      │ ─ SqliteStore       │  │ schema_gen│  │ TrackedLLM (LiteLLM)    │
+      │ ─ SqliteStore       │  │ schema_gen│  │ LLMService (litellm.Router)│
       │ ─ WikiStore         │  │ (Literal, │  │ ModelCascade (Flash→Pro)│
       │   · BM25 (rank_bm25)│  │  Enum,    │  │ cache_control injector  │
       │   · sqlite-vec opt. │  │  Pydantic)│  │ fallback chain          │
@@ -155,21 +155,48 @@ See §8.
 ### `core/memory/consolidator.py` — **new**
 Nightly APScheduler job; Mem0-style ADD/UPDATE/DELETE over recent chat_history against the wiki. See §8.
 
-### `core/llm/router.py` — **evolves**
-Stays: LiteLLM wrapping, tenacity retries, fallback chain.
-Evolves:
-- Inject `cache_control` breakpoints on system + tool schemas + stable facts per provider semantics (Anthropic explicit; OpenAI implicit passthrough; Gemini `CachedContent` opt-in). ([[12 §3]])
-- Return cache-read/write token counts; pass them through to `UsageTracker`.
+### `core/llm/router.py` — **deleted (Phase 4, commit `f3c82b5`)**
+
+**Phase 2 status (branch `refactor/llm-layer-litellm-primitives`, commit `6dee0fe`).** The hand-rolled `TrackedLLM` / tenacity retry loop in `router.py` was superseded by two primitives:
+
+- `src/conexus/core/llm/service.py` — `LLMConfig` frozen dataclass + `LLMService` wrapping `litellm.Router` with `num_retries=3`, `cooldown_time=60`, `retry_after=5`, and SKILL.md-declared fallbacks wired via `_build_fallbacks()`. Factory: `build_llm(config, agent_name)`. See `docs/wiki/litellm/03-router.md` for `litellm.Router` constructor details.
+- `src/conexus/core/llm/cost.py` — `cost_from_response()` prefers `_hidden_params["response_cost"]` (litellm pre-computed) and falls back to `litellm.cost_per_token`.
+
+**Phase 4 complete (commit `f3c82b5`).** `router.py` is deleted. All callers have been cut over to `LLMService`. The file no longer exists on disk (verified: `src/conexus/core/llm/` contains only `__init__.py`, `catalog.py`, `context_tag.py`, `cost.py`, `service.py`, `telemetry.py`, `usage_tracker.py`).
+
+**Phase 3 landed (branch `refactor/llm-layer-litellm-primitives`, commit `5b4e254`).** Usage writes moved from inline `UsageTracker.log_call` to a litellm callback:
+
+- `src/conexus/core/llm/telemetry.py` — `UsageLogger(CustomLogger)` captures every successful/failed litellm call via `async_log_success_event` / `async_log_failure_event`; reads `agent_name` from `kwargs["litellm_params"]["metadata"]` (Router path) or `kwargs["metadata"]` (bare call path). Factory: `install(store) -> UsageLogger` appends the instance to `litellm.callbacks` (see `docs/wiki/litellm/05-observability-and-caching.md` §Custom logger class).
+- `src/conexus/core/llm/usage_tracker.py` — `log_call` deleted; class is now **query-only** (`recent`, `total_usd`, `by_context`). Docstring at line 1 states: "Writes are owned by `conexus.core.llm.telemetry.UsageLogger`."
+- `build_llm(config, agent_name)` signature unchanged; tracker arg removed from all production call sites. `cli/__main__.py:63` and `web/admin/services/runner_proxy.py:86` call `telemetry.install(store)` at boot, before any `build_runtime` call.
+
+Remaining Phase 3+ work (not yet landed):
+- Inject `cache_control` breakpoints per provider; add `cache_read_tokens` / `cache_write_tokens` columns to `llm_usage` schema and populate from `UsageLogger`.
 - `ModelCascade` helper for Flash→Pro escalation (see §8).
 
-### `core/llm/usage_tracker.py` — **evolves**
-Adds cache columns, `trace_id` column, `/uso` breakdown by trace and by cache-hit ratio.
+### `core/llm/usage_tracker.py` — **query-only as of Phase 3**
+`log_call` and `compute_cost` import removed (Phase 3, commit `cd46501`). Remaining public surface: `recent()`, `total_usd()`, `by_context()`. Cache columns and `trace_id` column are still planned (Phase 4+).
 
 ### `core/llm/context_tag.py` — **evolves**
 Adds `trace_id: ContextVar[str | None]` alongside existing `context`.
 
-### `core/llm/pricing.py` — **evolves**
-Adds cache-read/write unit prices per model; `ModelCascade` uses pricing for escalate/de-escalate decisions.
+### `core/llm/catalog.py` — **new (Phase 1 landed, commit 56193d2)**
+Replaces `pricing.llm_options()` as the sole source of model discovery.
+Backed by `litellm.get_valid_models(check_provider_endpoint=True)` for live-capable providers
+(`openai`, `anthropic`, `gemini`) with `litellm.model_cost` catalog fallback for the rest.
+Public surface (see `src/conexus/core/llm/catalog.py`):
+
+- `list_providers() -> list[str]` — env-key gated; `lru_cache` + `.cache_clear()`.
+- `list_models(provider) -> list[str]` — live probe → catalog fallback; filters non-chat model suffixes.
+- `get_info(model) -> dict` — wraps `litellm.get_model_info`; returns `{}` on miss.
+- `llm_options() -> dict[str, list[str]]` — compat shim; same shape as old `pricing.llm_options()`.
+
+`web/admin/routes/agents.py` already imports `llm_options` from `catalog`, not `pricing`
+(see `src/conexus/web/admin/routes/agents.py:10`).
+Full catalog design: `docs/wiki/litellm/01-providers-and-models.md`.
+
+### `core/llm/pricing.py` — **deleted (Phase 4, commit `f3c82b5`)**
+`llm_options()` was superseded by `catalog.llm_options()` (Phase 1). `compute_cost` callers were migrated to `cost.py` + `_hidden_params["response_cost"]` in Phase 3. `pricing.py` is now deleted; the file no longer exists on disk.
 
 ### `core/budget/cap_checker.py` — **evolves**
 Stays: pre-call check, notify/halt.
@@ -205,7 +232,7 @@ The `core/handoff.py` path described in the original §8 spec was not used; the 
 
 ### `main.py` — **evolves**
 Stays: skill → LLM → tools → registry → bot wiring.
-Evolves: de-duplicate hard-coded "REGRA CRÍTICA" / "PROTOCOLO OBRIGATÓRIO" appendages — move them into `SKILL.md` bodies. Fix UTF-8 bug at `main.py:263`. Route voice transcription through `TrackedLLM`.
+Evolves: de-duplicate hard-coded "REGRA CRÍTICA" / "PROTOCOLO OBRIGATÓRIO" appendages — move them into `SKILL.md` bodies. Fix UTF-8 bug at `main.py:263`. Route voice transcription through `LLMService`.
 
 ### `agents/ana/`, `agents/pesquisador/` — **stay, mostly**
 SKILL.md bodies absorb the protocol text previously in `main.py`. Pesquisador's `compile_article` output cap drops to 8k; prompt template moves to `agents/pesquisador/prompts/compile_article.md`. `web_fetch` gets an SSRF guard; eventually (Phase 4) replaced by MCP client to `@modelcontextprotocol/server-fetch`.
@@ -259,7 +286,7 @@ Changes:
 - `agents/pesquisador/tools.py:web_fetch`: SSRF guard (scheme allowlist, private-IP blocklist, no-redirect-to-private).
 - `core/memory/sqlite_store.py`: `PRAGMA journal_mode=WAL; synchronous=NORMAL`; tri-state `ping_log` with `attempts`/`failed_at`/`last_error`.
 - `core/memory/wiki_store.py`: UTF-8 handling verified; content-hash dedupe on write.
-- `core/messaging/telegram_bot.py:178`: route voice transcription through `TrackedLLM`.
+- `core/messaging/telegram_bot.py:178`: route voice transcription through `LLMService` (not direct `litellm.acompletion`).
 - `main.py:263`: UTF-8 `â€"` bug fixed; protocol text moved to `SKILL.md` bodies.
 - `agents/pesquisador/tools.py:compile_article`: cap at 8k output; per-job `BudgetCap`.
 
@@ -279,7 +306,7 @@ Effort: **~5 days.**
 Changes:
 - `core/llm/context_tag.py`: add `trace_id` ContextVar.
 - `core/tracer.py`: new (see §8). OTel GenAI span emitter; SQLite + optional Langfuse backend.
-- `core/agent_handler.py`, `core/agent_registry.py`, `core/llm/router.py`: wrap with spans; propagate `trace_id`.
+- `core/agent_handler.py`, `core/agent_registry.py`, `core/llm/service.py`: wrap with spans; propagate `trace_id`.
 - `core/memory/sqlite_store.py`: new `tool_audit` table; `llm_usage.trace_id` column.
 - `core/evals/runner.py`: new (see §8). Promptfoo YAML + DeepEval-style metrics. Golden set under `evals/golden/`.
 - GitHub Action lane: `uv run python -m core.evals.runner --gate`.
@@ -319,9 +346,9 @@ Effort: **~10 days.**
 **Goal.** Make the cache do its job; halve briefing cost via Batch API.
 
 Changes:
-- `core/llm/router.py`: inject `cache_control` breakpoints per provider; pass through cache-token counts.
+- `core/llm/service.py`: inject `cache_control` breakpoints per provider; pass through cache-token counts. (`router.py` deleted in Phase 4 — see §4.)
 - `core/llm/usage_tracker.py`: `cache_read_tokens`, `cache_write_tokens`, `cache_cost_usd` columns.
-- `core/llm/pricing.py`: per-model cache prices.
+- `core/llm/cost.py`: per-model cache prices. (`pricing.py` deleted in Phase 4 — see §4.)
 - `core/llm/cascade.py`: `ModelCascade.escalate_if(condition)` helper (Flash → Pro).
 - `core/batch_dispatcher.py`: new; submits briefing + recap jobs to Gemini/Anthropic Batch API with 24 h SLA.
 - Per-agent + per-model `BudgetCap` in `SKILL.md`.
@@ -389,7 +416,7 @@ Effort: **~2 days** (substrate already in place).
 ### `RollingSummariser` — `core/memory/rolling_summariser.py`
 ```python
 class RollingSummariser:
-    def __init__(self, llm: TrackedLLM, store: SqliteStore, *, every: int = 20): ...
+    def __init__(self, llm: LLMService, store: SqliteStore, *, every: int = 20): ...
     async def maybe_refresh(self, session_id: str) -> str | None:
         """If chat_history for session_id grew by >= `every` since last summary,
         run a cheap Flash call that folds (old_summary + new_messages) into a new
@@ -400,7 +427,7 @@ Called by `handle_agent_message` *before* context build so the fresh summary lan
 ### `MemoryConsolidator` — `core/memory/consolidator.py`
 ```python
 class MemoryConsolidator:
-    def __init__(self, llm: TrackedLLM, store: SqliteStore, wiki: WikiStore): ...
+    def __init__(self, llm: LLMService, store: SqliteStore, wiki: WikiStore): ...
     async def run(self, *, since: datetime) -> ConsolidationReport:
         """Read chat_history since `since`, retrieve top-k relevant wiki chunks,
         ask LLM for ADD/UPDATE/DELETE operations, apply via wiki_write/wiki_delete,
@@ -432,7 +459,7 @@ Golden set under `evals/golden/{ana,pesquisador}/*.yaml`; CI gate fails on regre
 ### `ModelCascade` — `core/llm/cascade.py`
 ```python
 class ModelCascade:
-    def __init__(self, cheap: TrackedLLM, strong: TrackedLLM, *,
+    def __init__(self, cheap: LLMService, strong: LLMService, *,
                  escalate_if: Callable[[ChatResponse], bool]): ...
     async def acall(self, messages, tools): ...
 ```
@@ -489,7 +516,7 @@ Used by `handle_agent_message` only when `cfg.tool_index_enabled` is True.
 12. **Budget-cap trip count** (per agent per day).
 13. **Trace-to-commit ratio** (wiki commits per 100 traces) — sanity on memory write volume.
 14. **Model cascade escalation rate** (Flash→Pro escalations / total Pesquisador turns).
-15. **Voice transcription cost** (now visible once routed through TrackedLLM).
+15. **Voice transcription cost** (now visible once routed through `LLMService`).
 
 All exposed via `/uso` extended and dumped nightly to a `kpi_daily` table.
 
@@ -512,7 +539,7 @@ All of:
 - [ ] `/healthz` returns 200 with component statuses.
 - [ ] MCP adapter exposes wiki to Claude Desktop end-to-end.
 - [x] `Handoff` primitive + `HandoffRouter` + `BudgetCascader` + `handoff_audit` exist and are tested (Phase 8). Remaining: execution loop wiring two dummy agents end-to-end with shared `trace_id`.
-- [ ] No `litellm.acompletion` call anywhere outside `TrackedLLM`.
+- [ ] No `litellm.acompletion` call anywhere outside `LLMService` (`router.py` deleted in Phase 4, commit `f3c82b5`).
 - [ ] All 15 KPIs in §9 are queryable from SQLite.
 
 When all boxes are ticked, v1 kernel is shipped and agent-specific bug-fix work resumes on top of a stable substrate.
@@ -523,7 +550,7 @@ When all boxes are ticked, v1 kernel is shipped and agent-specific bug-fix work 
 
 1. **Do we expose `WikiStore` via MCP?** Leaning yes (Claude Desktop memory review is the killer use-case) but it raises a write-safety question — do we expose `wiki_write` or just `wiki_search`+`wiki_read`?
 2. **Rerank model: self-host BGE, or call Gemini/Cohere?** Self-host adds a dependency; hosted adds a hot-path latency + cost. Probably hosted for v1, self-host as Phase 6 if volume warrants.
-3. **Keep LiteLLM, or direct SDK calls?** LiteLLM's fallback chain is useful but its cache-control passthrough is patchy. Might migrate `TrackedLLM` to direct `anthropic` + `google-genai` SDKs in Phase 6.
+3. **Keep LiteLLM, or direct SDK calls?** LiteLLM's fallback chain is useful (now consumed via `litellm.Router` in `LLMService`) but its cache-control passthrough is patchy. Might migrate `LLMService` to direct `anthropic` + `google-genai` SDKs in Phase 6.
 4. **`sqlite-vec` or wait for FTS5 + BM25 only?** Phase 2 leaves sqlite-vec optional. Decision gate: if memory eval recall@5 with BM25 alone stays ≥ 80% at 500 facts, skip vec entirely.
 5. **Do we adopt Anthropic "Memory Tool" (the 2025 hosted tool)?** Tempting but it binds us to Anthropic; our wiki already does this better with git. Probably no.
 6. **Langfuse self-host vs. OTel → nothing yet?** SQLite-only spans are sufficient for a solo operator; Langfuse is a second Fly app to run. Defer until an incident needs a replay UI.

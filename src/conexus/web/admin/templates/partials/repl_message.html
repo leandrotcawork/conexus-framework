@@ -1,5 +1,5 @@
-<div class="repl-msg {% if role == 'user' %}repl-msg-user{% else %}repl-msg-agent{% endif %}">
+<div class="repl-msg {% if role == 'user' %}repl-msg-user{% elif role == 'error' %}repl-msg-error{% else %}repl-msg-agent{% endif %}">
   <span class="text-[10px] font-semibold uppercase tracking-wide mr-1
-    {% if role == 'user' %}text-slate-400{% else %}text-indigo-400{% endif %}">{{ role }}</span>
-  <span class="whitespace-pre-wrap">{{ text }}</span>
+    {% if role == 'user' %}text-slate-400{% elif role == 'error' %}text-rose-400{% else %}text-indigo-400{% endif %}">{{ role }}</span>
+  <span class="whitespace-pre-wrap {% if role == 'error' %}text-rose-300{% endif %}">{{ text }}</span>
 </div>

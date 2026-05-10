@@ -51,8 +51,17 @@ class FactsSection(BaseModel):
 
 
 class WikiSection(BaseModel):
-    dir: str
+    backend: str = "local"
+    dir: str = "./wiki"
     inject_index: bool = True
+    repo: str | None = None  # Phase 2 (github_app)
+
+    @field_validator("backend")
+    @classmethod
+    def _validate_backend(cls, v: str) -> str:
+        if v not in {"local", "github_app"}:
+            raise ValueError(f"unknown wiki backend: {v!r}")
+        return v
 
 
 class HistorySection(BaseModel):
@@ -66,8 +75,12 @@ class IdentitySection(BaseModel):
     enabled: bool = False
     blocks: dict[str, BlockSpec] = Field(default_factory=dict)
     facts: FactsSection = Field(default_factory=FactsSection)
-    wiki: WikiSection | None = None
+    # Default to local wiki so existing agents (e.g. anna) keep working without
+    # adding an explicit `identity.wiki` block. Set to None only via explicit
+    # YAML `wiki: null`.
+    wiki: WikiSection | None = Field(default_factory=WikiSection)
     history: HistorySection = Field(default_factory=HistorySection)
+    prompt_override: str | None = None
 
     @field_validator("blocks", mode="before")
     @classmethod

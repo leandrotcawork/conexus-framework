@@ -27,7 +27,7 @@
 - **Central dispatch with uniform error shape.** `core/agent_registry.py:execute_tool` returns a JSON string for every outcome, exceptions wrapped as `{"error": ...}` — never raises into the loop ([[03-tool-integration]] idempotent tool contract).
 - **Typed LLM budgets with notify/halt semantics.** `core/budget/cap_checker.py` + `BudgetCap` on SKILL.md (`on_exceed: notify|halt`); recent fix `d1ba537` made the semantics correct ([[12-cost-token-optimization]] cost controls).
 - **Context-tagged cost logging.** `core/llm/context_tag.py` ContextVar + `UsageTracker.by_context()` lets `/uso` break cost down by `reactive` / `briefing` / `synthesis` ([[09-observability-evaluation]] attribution).
-- **Retries + provider fallback.** `core/llm/router.py:107-120` wraps LiteLLM with tenacity exponential backoff and SKILL.md-declared fallback chain ([[10-deployment-runtime §6]] back-pressure).
+- **Retries + provider fallback.** Phase 2 (branch `refactor/llm-layer-litellm-primitives`, commit `6dee0fe`) landed `LLMService` (`src/conexus/core/llm/service.py`) wrapping `litellm.Router` with `num_retries=3`, `cooldown_time=60`, and SKILL.md-declared fallback chain — replacing the hand-rolled tenacity loop that lived in `core/llm/router.py:107-120`. `router.py` was deleted in Phase 4 (commit `f3c82b5`). See `docs/wiki/litellm/03-router.md` for `litellm.Router` API. ([[10-deployment-runtime §6]] back-pressure.)
 - **Idempotent scheduled jobs via `ping_log`.** `agents/ana/jobs.py:31-48` and `agents/pesquisador/jobs.py:20-37` use mark-pending → body → mark-sent ([[10-deployment-runtime §5]]).
 - **Git-backed knowledge wiki with path-escape guard.** `core/memory/wiki_store.py:22-28` validates against `..` traversal before writing; Pesquisador uses explicit `git_sync` tool rather than per-write autocommit ([[04-memory-systems]] / [[07-rag-retrieval]] persistent-memory pattern).
 - **Single-machine SQLite on Fly volume.** Matches the [[10-deployment-runtime §8]] sweet-spot for a solo operator.
@@ -139,7 +139,7 @@ The remaining effort for (1) and (2) combined is roughly half a day as [[11 §8]
 ### 4.12 [[12-cost-token-optimization]] — Caching, routing, batching, truncation
 
 Biggest wins in the repo sit here. Concrete list:
-  - **Prompt caching absent.** `core/llm/router.py` does not pass `cache_control` blocks. With Gemini 2.5 Flash's implicit cache and Anthropic's explicit 4-breakpoint cache (if/when a Claude model is added), system prompt + tool schemas + stable facts are the obvious cache targets. Combined with the timestamp-fix from §4.5, expect 30–60 % input token savings on reactive turns.
+  - **Prompt caching absent.** `core/llm/service.py` (`LLMService`) does not yet pass `cache_control` blocks. With Gemini 2.5 Flash's implicit cache and Anthropic's explicit 4-breakpoint cache (if/when a Claude model is added), system prompt + tool schemas + stable facts are the obvious cache targets. Combined with the timestamp-fix from §4.5, expect 30–60 % input token savings on reactive turns.
   - **No cache_read/write tokens tracked.** `core/llm/usage_tracker.py:16` schema lacks `cache_read_tokens` / `cache_write_tokens` / `cache_cost_usd` columns. You can't measure the win from the above if you don't log it.
   - **`compile_article` unbudgeted 16k output.** `agents/pesquisador/tools.py:281` passes `max_tokens=16000` to Gemini Pro preview. A single article call at Pro pricing can approach the daily $0.15 Pesquisador cap on its own. Fix: drop to 6-8k, add a `length_hint` parameter controlled by article complexity, and move the prompt template to a file rather than inline string literal.
   - **Tool-output truncation is a hard cut.** `core/agent_handler.py:145-147` appends `"\n[... truncado]"` when over `result_max_chars`. [[12 §5]] wants paginated tool outputs with an opaque `cursor` param — the LLM can ask for more if needed instead of losing data silently. Add a `page_cursor` kwarg to large-output tools (`wiki_list`, `calendar_list_events`, `web_search`).
@@ -167,7 +167,7 @@ Biggest wins in the repo sit here. Concrete list:
 - **Encoding bug `main.py:263`.** UTF-8 round-trip produced `â€"` literal.
 - **`schema_gen.py` silent fallback.** §4.3. Most impactful correctness bug in the repo.
 - **Wiki `git_sync` blocks the agent loop.** `core/memory/wiki_store.py` pull-rebase-push is synchronous with a 30-second httpx-style timeout. If the git remote hangs, the Telegram reply stalls. Offload to `asyncio.to_thread` or an out-of-band commit queue.
-- **Voice transcription bypasses router.** `core/messaging/telegram_bot.py:178` calls `litellm.acompletion` directly — bypasses `TrackedLLM`, so transcription cost is unlogged. Violates `ARCHITECTURE.md §9` invariant ("Every LLM call goes through `TrackedLLM`").
+- **Voice transcription bypasses router.** `core/messaging/telegram_bot.py:178` calls `litellm.acompletion` directly — bypasses `LLMService`, so transcription cost is unlogged. Violates `ARCHITECTURE.md §9` invariant ("Every LLM call goes through `LLMService`").
 
 ---
 
@@ -175,14 +175,14 @@ Biggest wins in the repo sit here. Concrete list:
 
 Format: *title — why — files — effort (S/M/L) — type (BUG/IMPROVE)*.
 
-1. **Remove timestamp from system prompt; add `cache_control` breakpoints.** Single biggest cost win. `core/agent_handler.py:58-90`, `core/llm/router.py`. **S**. IMPROVE.
+1. **Remove timestamp from system prompt; add `cache_control` breakpoints.** Single biggest cost win. `core/agent_handler.py:58-90`, `core/llm/service.py` (`LLMService.acompletion`). **S**. IMPROVE.
 2. **Fix `schema_gen` silent string fallback.** Add `Literal`/`Enum`/`dict`/nested-Pydantic; raise on unknown; add `strict:true`+`additionalProperties:false`. `core/tools/schema_gen.py`. **S**. **BUG**.
 3. **Add `trace_id` ContextVar + column.** Propagate through handler → registry → usage_tracker → ping_log. `core/llm/context_tag.py`, `core/agent_handler.py`, `core/agent_registry.py`, `core/llm/usage_tracker.py`, `core/memory/sqlite_store.py`. **S-M**. IMPROVE.
-4. **Log cache_read/write tokens + costs in `UsageTracker`.** Schema migration + router passthrough. `core/llm/usage_tracker.py`, `core/llm/router.py`, `core/llm/pricing.py`. **S**. IMPROVE.
+4. **Log cache_read/write tokens + costs in `UsageTracker`.** Schema migration + passthrough from `LLMService`. `core/llm/usage_tracker.py`, `core/llm/service.py`, `core/llm/cost.py`. **S**. IMPROVE.
 5. **SSRF-guard `pesquisador.tools.web_fetch`.** Scheme allowlist + host blocklist + no-redirect-to-private-ip. `agents/pesquisador/tools.py`. **S**. **BUG**.
 6. **Fix `ping_log` pending/failed ambiguity.** Add `attempts`, `failed_at`, `last_error`; update `ping_was_sent`. `core/memory/sqlite_store.py`, both `jobs.py` files. **S**. **BUG**.
 7. **Enforce `PRAGMA journal_mode=WAL; synchronous=NORMAL`.** At SqliteStore init. `core/memory/sqlite_store.py`. **S**. **BUG**.
-8. **Route voice transcription through `TrackedLLM`.** Invariant violation — cost currently unlogged. `core/messaging/telegram_bot.py:178`. **S**. **BUG**.
+8. **Route voice transcription through `LLMService`.** Invariant violation — cost currently unlogged. `core/messaging/telegram_bot.py:178`. **S**. **BUG**.
 9. **Cap `compile_article` output; move prompt to template file.** `agents/pesquisador/tools.py:281`. **S**. **BUG**.
 10. **Add `tool_audit` table and register per-tool span.** `core/agent_registry.py`, `core/memory/sqlite_store.py`. **M**. IMPROVE.
 11. **Add rolling conversation summary.** New `conversation_summary` column; compaction every N messages; inject into system build. `core/memory/sqlite_store.py`, `core/agent_handler.py`. **M**. IMPROVE.

@@ -27,7 +27,10 @@ Fly.io). Design rationale: [[06-multi-agent-orchestration]] §13-14.
    → ssh-keyscan github.com → ~/.ssh/known_hosts
    → git clone / git pull for ANA_WIKI_REPO and KNOWLEDGE_WIKI_REPO
 4. WikiStore instances constructed (wiki, knowledge_wiki)
-5. UsageTracker(store) + CapChecker(tracker)
+5. telemetry.install(store)   — registers UsageLogger on litellm.callbacks; all
+                               subsequent litellm calls persist to llm_usage
+                               automatically (see src/conexus/core/llm/telemetry.py:60)
+   UsageTracker(store) + CapChecker(tracker)
 6. parse_skill_file("agents/ana/SKILL.md") → SkillDocument
    AnaTools(store, wiki, GoogleCalendarClient())
    registry.register("ana", ana_tools)     → wraps in PythonBackend
@@ -468,7 +471,7 @@ Telegram message
                  ├─ TrifectaGuard(cfg.tool_tags) [src/conexus/core/trifecta/guard.py]
                  ├─ store.chat_recent (history)  [src/conexus/core/memory/sqlite_store.py]
                  └─ for turn in max_turns:
-                      ├─ TrackedLLM.acall        [src/conexus/core/llm/router.py]
+                      ├─ LLMService.acompletion  [src/conexus/core/llm/service.py]
                       │    └─ LiteLLM → Gemini / OpenAI / Anthropic
                       └─ for each tool_call:
                            ├─ guard.check_and_record [trifecta/guard.py]

@@ -153,7 +153,7 @@ async def test_nested_delegation_success(tmp_path):
     )
     doc = TeamLoader({"ana", "researcher", "pm"}).load(str(pack))
     team = TeamRegistry(doc)
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
 
     async def exec_tool(name, args):
         return "{}"
@@ -211,7 +211,7 @@ async def test_hop_limit_aborts(tmp_path):
     )
     doc = TeamLoader({"ana", "researcher"}).load(str(pack))
     team = TeamRegistry(doc)
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
 
     async def exec_tool(name, args):
         return "{}"
@@ -294,7 +294,7 @@ async def test_trifecta_propagates_through_handoff(tmp_path):
     )
     doc = TeamLoader({"ana", "pm"}).load(str(pack))
     team = TeamRegistry(doc)
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
 
     async def exec_tool(name, args):
         return '"x"'

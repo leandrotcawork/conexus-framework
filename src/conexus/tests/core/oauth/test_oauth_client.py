@@ -15,7 +15,7 @@ AS = AuthorizationServerMetadata(
 async def test_dynamic_client_registration(httpx_mock, tmp_path):
     from conexus.core.memory.sqlite_store import SqliteStore
 
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     client = OAuthClient(
         store=store, master_secret=b"x" * 32, redirect_uri="https://app/oauth/callback"
@@ -37,7 +37,7 @@ async def test_dynamic_client_registration(httpx_mock, tmp_path):
 def test_build_authorize_url(tmp_path):
     from conexus.core.memory.sqlite_store import SqliteStore
 
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     client = OAuthClient(
         store=store, master_secret=b"x" * 32, redirect_uri="https://app/oauth/callback"
@@ -62,7 +62,7 @@ def test_build_authorize_url(tmp_path):
 async def test_exchange_code(httpx_mock, tmp_path):
     from conexus.core.memory.sqlite_store import SqliteStore
 
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     client = OAuthClient(
         store=store, master_secret=b"x" * 32, redirect_uri="https://app/oauth/callback"
@@ -93,7 +93,7 @@ async def test_exchange_code(httpx_mock, tmp_path):
 async def test_refresh(httpx_mock, tmp_path):
     from conexus.core.memory.sqlite_store import SqliteStore
 
-    store = SqliteStore(str(tmp_path / "c.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     client = OAuthClient(
         store=store, master_secret=b"x" * 32, redirect_uri="https://app/oauth/callback"

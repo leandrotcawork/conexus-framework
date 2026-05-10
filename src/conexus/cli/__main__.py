@@ -50,6 +50,7 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
     from conexus.core.agent_registry import AgentRegistry
     from conexus.core.budget.cap_checker import CapChecker
     from conexus.core.config.skill_loader import parse_skill_file
+    from conexus.core.llm import telemetry
     from conexus.core.llm.usage_tracker import UsageTracker
     from conexus.cli.runner import build_runtime
 
@@ -59,6 +60,7 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
 
     data_dir.mkdir(parents=True, exist_ok=True)
     store, tools = _make_tools(agent_name, agents_dir, data_dir)
+    telemetry.install(store)
 
     registry = AgentRegistry()
     registry.register(agent_name, tools)
@@ -71,7 +73,6 @@ async def _run_loop(agent_name: str, agents_dir: Path, data_dir: Path) -> None:
         str(skill_path),
         tools_obj=tools,
         execute_tool=execute_tool,
-        tracker=tracker,
         agent_name=agent_name,
         system_prompt=skill.body,
         store=store,
@@ -272,6 +273,15 @@ def _handle_studio(args: argparse.Namespace) -> None:
 
     from conexus.web.admin.app import make_admin_app
 
+    # Load .env from CWD so LLM keys (GEMINI/ANTHROPIC/OPENAI) reach the runtime
+    # without requiring the launcher to export them. No-op if dotenv missing or
+    # .env absent.
+    try:
+        from dotenv import load_dotenv  # type: ignore[import-not-found]
+        load_dotenv()
+    except ImportError:
+        pass
+
     agents_dir = Path(os.environ.get("CONEXUS_AGENTS_DIR", "./agents"))
     data_dir = Path(os.environ.get("CONEXUS_DATA_DIR", "./data"))
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -285,6 +295,18 @@ def _handle_studio(args: argparse.Namespace) -> None:
         except Exception:  # noqa: BLE001
             pass
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+
+
+def _handle_wiki_migrate(args: argparse.Namespace) -> None:
+    from conexus.cli.wiki_migrate import migrate_agent_wiki
+    from conexus.core.memory.sqlite_store import SqliteStore
+    from conexus.core.memory.wiki.local import LocalBackend
+
+    store = SqliteStore(f"{args.data_dir}/conexus.db")
+    store.init_db()
+    backend = LocalBackend(Path(args.agents_dir) / args.agent / "wiki")
+    res = migrate_agent_wiki(args.agent, backend, store)
+    print(res)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -350,6 +372,14 @@ def _build_parser() -> argparse.ArgumentParser:
     studio_p.add_argument("--port", type=int, default=8765)
     studio_p.add_argument("--no-browser", action="store_true")
     studio_p.set_defaults(func=_handle_studio)
+
+    wiki_p = sub.add_parser("wiki", help="wiki maintenance")
+    wiki_sub = wiki_p.add_subparsers(dest="wiki_cmd")
+    mig = wiki_sub.add_parser("migrate", help="inject frontmatter + build FTS index")
+    mig.add_argument("--agent", required=True)
+    mig.add_argument("--data-dir", default="./data")
+    mig.add_argument("--agents-dir", default="./agents")
+    mig.set_defaults(func=_handle_wiki_migrate)
 
     return parser
 

@@ -12,7 +12,7 @@ def _now_iso() -> str:
 
 
 def test_list_returns_token_rows(tmp_path: Path) -> None:
-    store = SqliteStore(str(tmp_path / "conexus.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     now = int(time.time())
     with store.conn as c:
@@ -39,7 +39,7 @@ def test_status_classification() -> None:
 
 
 def test_scopes_json_malformed_falls_back_to_empty(tmp_path: Path) -> None:
-    store = SqliteStore(str(tmp_path / "conexus.db"))
+    store = SqliteStore(":memory:")
     store.init_db()
     now = int(time.time())
     with store.conn as c:

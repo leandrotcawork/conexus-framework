@@ -68,7 +68,12 @@ first to bootstrap:
 2. `conexus-skill-calendar` (extract Ana's calendar tools)
 3. `conexus-team-research` (Ana + Pesq + future Researcher pre-wired)
 
-Until those three exist, marketplace is premature infrastructure.
+**Phase B status (2026-05-07):** two shared packs now live under `packs/` and
+are in production on Anna — `packs/reminders/` and `packs/notes/` (see
+`05-skills-prompts.md` §2 Phase B addition). The `packs/` root establishes the
+directory convention and `create_tools(ctx)` factory contract that future
+marketplace packs must follow. One more substantial pack (wiki or calendar)
+fires the gating signal. Until then, marketplace is premature infrastructure.
 
 ### 2.4 Hard problems we'll meet
 

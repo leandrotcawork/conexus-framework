@@ -11,83 +11,56 @@ def _make(tmp_db_path: Path) -> UsageTracker:
     return UsageTracker(store)
 
 
-def test_log_call_writes_row(tmp_db_path):
-    tracker = _make(tmp_db_path)
-    tracker.log_call(
-        agent_name="ana",
-        provider="gemini",
-        model="gemini-2.0-flash",
-        input_tokens=1000,
-        output_tokens=500,
-        context="reactive",
-        duration_ms=842,
-    )
+def _insert_row(store: SqliteStore, agent_name: str, provider: str, model: str,
+                input_tokens: int, output_tokens: int, context: str,
+                cost_usd: float, duration_ms: int | None = None, error: str | None = None) -> None:
+    """Insert a row directly into the llm_usage table."""
+    with store.connect() as conn:
+        conn.execute(
+            """INSERT INTO llm_usage
+               (ts, agent_name, provider, model, input_tokens, output_tokens,
+                cost_usd, context, duration_ms, error)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (datetime.now(timezone.utc).isoformat(), agent_name, provider, model,
+             input_tokens, output_tokens, cost_usd, context, duration_ms, error),
+        )
+        conn.commit()
+
+
+def test_recent_queries_rows(tmp_db_path):
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
+    tracker = UsageTracker(store)
+    _insert_row(store, "ana", "gemini", "gemini-2.0-flash", 1000, 500, "reactive", 0.001, 842)
     rows = tracker.recent(limit=10)
     assert len(rows) == 1
     assert rows[0]["agent_name"] == "ana"
     assert rows[0]["context"] == "reactive"
-    assert rows[0]["cost_usd"] > 0
+    assert rows[0]["cost_usd"] == 0.001
 
 
 def test_total_usd_aggregation(tmp_db_path):
-    tracker = _make(tmp_db_path)
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
+    tracker = UsageTracker(store)
     for _ in range(3):
-        tracker.log_call(
-            agent_name="ana",
-            provider="gemini",
-            model="gemini-2.0-flash",
-            input_tokens=1000,
-            output_tokens=500,
-            context="reactive",
-        )
-    tracker.log_call(
-        agent_name="researcher",
-        provider="gemini",
-        model="gemini-2.0-flash",
-        input_tokens=1000,
-        output_tokens=500,
-        context="briefing",
-    )
+        _insert_row(store, "ana", "gemini", "gemini-2.0-flash", 1000, 500, "reactive", 0.001)
+    _insert_row(store, "researcher", "gemini", "gemini-2.0-flash", 1000, 500, "briefing", 0.001)
 
     total_ana = tracker.total_usd(agent_name="ana")
-    assert total_ana > 0
+    assert total_ana == 0.003  # 3 rows at 0.001 each
 
     total_all = tracker.total_usd()
-    assert total_all > total_ana  # researcher added
+    assert total_all == 0.004  # 4 total rows
 
     by_ctx = tracker.by_context(agent_name="ana")
-    assert by_ctx.get("reactive", 0) > 0
+    assert by_ctx.get("reactive", 0) == 0.003
 
 
 def test_total_usd_since(tmp_db_path):
-    tracker = _make(tmp_db_path)
-    tracker.log_call(
-        agent_name="ana", provider="gemini", model="gemini-2.0-flash",
-        input_tokens=1000, output_tokens=500, context="reactive",
-    )
+    store = SqliteStore(tmp_db_path)
+    store.init_db()
+    tracker = UsageTracker(store)
+    _insert_row(store, "ana", "gemini", "gemini-2.0-flash", 1000, 500, "reactive", 0.001)
     future = datetime.now(timezone.utc) + timedelta(days=1)
     assert tracker.total_usd(agent_name="ana", since=future) == 0.0
-
-
-def test_pricing_reflects_in_total(tmp_db_path):
-    """Cost flows through from compute_cost into the DB and aggregation.
-
-    We mock litellm.cost_per_token so the test isn't coupled to live pricing.
-    """
-    from unittest.mock import patch
-    import pytest
-
-    fake_input_cost = 0.075   # $0.075 per 1M input tokens
-    fake_output_cost = 0.300  # $0.300 per 1M output tokens
-
-    with patch("litellm.cost_per_token", return_value=(fake_input_cost, fake_output_cost)):
-        tracker = _make(tmp_db_path)
-        tracker.log_call(
-            agent_name="ana",
-            provider="gemini",
-            model="gemini-2.0-flash",
-            input_tokens=1_000_000,
-            output_tokens=1_000_000,
-            context="reactive",
-        )
-        assert tracker.total_usd(agent_name="ana") == pytest.approx(0.375, rel=1e-6)

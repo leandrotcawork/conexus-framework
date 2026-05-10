@@ -87,7 +87,10 @@ def test_identity_section_minimal(tmp_path):
     assert ident.enabled is True
     assert ident.blocks == {}
     assert ident.facts.enabled is False
-    assert ident.wiki is None
+    # Default factory: backward-compat — agents without explicit `wiki:` block
+    # get a local wiki. To disable, set `wiki: null` explicitly in YAML.
+    assert ident.wiki is not None
+    assert ident.wiki.backend == "local"
     assert ident.history.budget_tokens == 4000  # default
 
 

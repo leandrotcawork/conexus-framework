@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from conexus.core.budget.cap_checker import BudgetCap, CapChecker
 from conexus.core.llm.context_tag import set_context
-from conexus.core.llm.router import TrackedLLM
+from conexus.core.llm.service import LLMService
 from conexus.core.memory.sqlite_store import SqliteStore
 from conexus.core.oauth.errors import NeedsAuthError
 
@@ -36,7 +36,7 @@ class NeedsAuthEvent:
 @dataclass
 class AgentHandlerConfig:
     name: str                            # "ana" or "pesquisador"
-    llm: TrackedLLM
+    llm: LLMService
     tools_schema: list[dict]
     execute_tool: Callable[..., Any]     # (name: str, args: dict) -> str, sync or async
     system_prompt: str                   # fixed portion — datetime is appended at call time
@@ -66,7 +66,7 @@ async def handle_agent_message(
 ) -> str:
     """Run the tool-calling agentic loop for any agent.
 
-    Acquires no locks itself — concurrency is handled inside TrackedLLM.acall().
+    Acquires no locks itself — concurrency is handled inside LLMService.acall().
     """
     from conexus.core.trifecta.guard import TrifectaGuard, TrifectaViolation
 
@@ -119,6 +119,7 @@ async def handle_agent_message(
             ir.store,
             ir.wiki,
             ir.blocks,
+            ir.skill_dir,
         )
 
     base_system = (identity_ctx + "\n\n" if identity_ctx else "") + cfg.system_prompt
@@ -271,9 +272,9 @@ async def handle_team_message(
     if session_id is None:
         session_id = f"sess-{uuid.uuid4().hex[:12]}"
 
-    registry = TeamRegistry(team)
+    registry = team if isinstance(team, TeamRegistry) else TeamRegistry(team)
     store.init_db()
-    audit_conn: sqlite3.Connection = sqlite3.connect(store.db_path)
+    audit_conn: sqlite3.Connection = store.conn
     try:
         router = HandoffRouter(registry, conn=audit_conn, session_id=session_id)
         policy = registry.policy
@@ -473,4 +474,5 @@ async def handle_team_message(
         store.chat_append(starter, "assistant", last_reply)
         return last_reply
     finally:
-        audit_conn.close()
+        if audit_conn is not getattr(store, "_mem_conn", None):
+            audit_conn.close()
